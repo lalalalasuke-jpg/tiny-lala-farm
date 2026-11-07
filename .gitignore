@@ -1,0 +1,8 @@
+# Godot 4 のインポートキャッシュ（自動生成）
+.godot/
+
+# Web 書き出しの出力先
+/build/
+
+# くろすけの永続メモリ（別リポジトリ github.com/lalalalasuke-jpg/claude-memory）
+.claude-memory/
