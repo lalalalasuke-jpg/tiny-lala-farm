@@ -1,6 +1,6 @@
 extends SceneTree
 # 見た目確認用: 少し遊んだ状態にしてスクショを保存する
-# 使い方: godot --path . --resolution 720x1280 --script res://tools/screenshot.gd -- <出力.png> [title|grow|result]
+# 使い方: godot --path . --resolution 720x1280 --script res://tools/screenshot.gd -- <出力.png> [title|lengths|grow|result]
 func _initialize() -> void:
 	_run.call_deferred()
 
@@ -11,8 +11,12 @@ func _run() -> void:
 	var main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
 	await create_timer(0.2).timeout
-	if mode != "title":
-		main._start("goal" if mode == "grow" else "days")
+	if mode == "lengths":  # 長さえらび（result で保存したテスト用のベストが出る）
+		main.best_path = "user://test_best.cfg"
+		main._show_lengths("days")
+	elif mode != "title":
+		main.best_path = "user://test_best.cfg"
+		main._start("goal" if mode == "grow" else "days", 3000 if mode == "grow" else 30)
 		await create_timer(0.6).timeout
 		# 1日目: 9マス耕して、カブ3・トマト2・イチゴ1をまいて水やり
 		var plan := ["turnip", "turnip", "turnip", "tomato", "tomato", "strawberry", "", "", ""]
@@ -22,7 +26,7 @@ func _run() -> void:
 				main.selected_seed = plan[i]
 				main._work(i)
 				main._work(i)
-		var days: int = 2 if mode == "grow" else main.DAYS_LIMIT
+		var days: int = 2 if mode == "grow" else 30
 		for d in days:
 			main._on_sleep_pressed()
 			await create_timer(0.5).timeout

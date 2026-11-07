@@ -5,6 +5,8 @@ extends SceneTree
 # 使い方: godot --headless --path . --script res://tools/simulate.gd
 const MAIN := preload("res://scenes/main.gd")
 const RUNS := 300
+const DAYS := 30  # 日数チャレンジの長さ
+const GOAL := 3000  # 金額チャレンジの目標
 
 # 作戦: 9マスそれぞれに何をまくか、どの作物に肥料を使うか
 const PLANS := {
@@ -73,11 +75,11 @@ func _play(plan: Dictionary) -> Array:
 				else:
 					p.growth += 1
 		money += earned
-		if day == MAIN.DAYS_LIMIT:
+		if day == DAYS:
 			money_at_30 = money
-		if goal_day == 0 and money >= MAIN.GOAL_MONEY:
+		if goal_day == 0 and money >= GOAL:
 			goal_day = day
-		if day >= MAIN.DAYS_LIMIT and goal_day > 0:
+		if day >= DAYS and goal_day > 0:
 			break
 	return [money_at_30, goal_day]
 

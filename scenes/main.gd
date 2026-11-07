@@ -5,8 +5,9 @@ extends Node2D
 #   （耕す → 種をまく → 水やり → 収穫）。収穫したものは出荷箱へ。寝ると次の日。
 # モードは2つ: 30日でいくら稼げるか（days）／3000Gを何日でためられるか（goal）
 
-const DAYS_LIMIT := 30
-const GOAL_MONEY := 3000
+const DAY_OPTIONS := [20, 30, 50, 60]  # 日数チャレンジの長さ
+const GOAL_OPTIONS := [3000, 5000, 10000]  # 金額チャレンジの目標
+const BEST_PATH := "user://best.cfg"  # ベスト記録（Web ではブラウザの中に保存される）
 const START_MONEY := 100
 const FERT_PRICE := 15
 const WITHER_WATERED := 0.05  # 水をあげた夜に枯れる確率
@@ -29,8 +30,11 @@ const BOX := 99  # 歩き終わったら出荷箱に入れる
 
 # 「もう一回」でシーンを読み直しても残るように static にする。空ならタイトルから
 static var next_mode := ""
+static var next_limit := 0
 
 var mode := ""  # "days" か "goal"
+var limit := 0  # days なら日数、goal なら目標金額
+var best_path := BEST_PATH  # テストでは別のファイルに差し替える
 var day := 1
 var money := START_MONEY
 # 収穫して持っているもの／今日出荷箱に入れたもの（寝るとお金になる）。
@@ -68,18 +72,35 @@ func _ready() -> void:
 	_build_ui()
 	busy = true
 	if next_mode != "":
-		_start(next_mode)
+		_start(next_mode, next_limit)
 	else:
 		fade.color.a = 0.6
 		_refresh()
-		_show_popup("Tiny Lala Farm\n\nどっちで遊ぶ？", [
-			["%d日チャレンジ\n%d日でいくら稼げる？" % [DAYS_LIMIT, DAYS_LIMIT], _start.bind("days")],
-			["%dGチャレンジ\n何日でためられる？" % GOAL_MONEY, _start.bind("goal")],
-		])
+		_show_title()
 
 
-func _start(m: String) -> void:
+func _show_title() -> void:
+	_show_popup("Tiny Lala Farm\n\nどっちで遊ぶ？", [
+		["日数チャレンジ\n決まった日数でいくら稼げる？", _show_lengths.bind("days")],
+		["金額チャレンジ\n目標金額を何日でためられる？", _show_lengths.bind("goal")],
+	])
+
+
+func _show_lengths(m: String) -> void:
+	var buttons := []
+	for n in (DAY_OPTIONS if m == "days" else GOAL_OPTIONS):
+		var best := _load_best(m, n)
+		var label := "%d日" % n if m == "days" else "%dG" % n
+		if best > 0:
+			label += "　（ベスト %s）" % _format_score(m, best)
+		buttons.append([label, _start.bind(m, n)])
+	buttons.append(["もどる", _show_title])
+	_show_popup("日数をえらんでね" if m == "days" else "目標金額をえらんでね", buttons)
+
+
+func _start(m: String, n: int) -> void:
 	mode = m
+	limit = n
 	popup.visible = false
 	_refresh()
 	say("畑をタップすると、歩いていって耕すよ")
@@ -286,10 +307,10 @@ func _on_sleep_pressed() -> void:
 		for id in withered:
 			w.append("%s×%d" % [CROPS[id].name, withered[id]])
 		text += "\n\n枯れちゃった: " + "  ".join(w)
-	if mode == "days" and day > DAYS_LIMIT:
-		_finish("%d日間おつかれさま！\n\n%s\n\nさいごの所持金\n%dG" % [DAYS_LIMIT, text, money])
-	elif mode == "goal" and money >= GOAL_MONEY:
-		_finish("%dG達成！\n\n%s\n\nかかった日数\n%d日" % [GOAL_MONEY, text, day - 1])
+	if mode == "days" and day > limit:
+		_finish("%d日間おつかれさま！\n\n%s\n\nさいごの所持金\n%dG" % [limit, text, money], money)
+	elif mode == "goal" and money >= limit:
+		_finish("%dG達成！\n\n%s\n\nかかった日数\n%d日" % [limit, text, day - 1], day - 1)
 	elif mode == "goal" and _stuck():
 		_finish("お金も作物もなくなっちゃった…\n\n%d日目 所持金 %dG" % [day, money])
 	else:
@@ -300,19 +321,53 @@ func _wake_up() -> void:
 	popup.visible = false
 	await _fade_to(0.0)
 	busy = false
-	if mode == "days" and day == DAYS_LIMIT:
+	if mode == "days" and day == limit:
 		say("今日が最終日！収穫したものは出荷箱へ")
 	else:
 		say("おはよう！水やりを忘れずにね")
 
 
-func _finish(text: String) -> void:
-	_show_popup(text, [["もう一回", _restart.bind(mode)], ["タイトルへ", _restart.bind("")]])
+# score: days なら所持金（多いほどいい）、goal ならかかった日数（少ないほどいい）。-1 は記録なし
+func _finish(text: String, score := -1) -> void:
+	if score >= 0:
+		var best := _load_best(mode, limit)
+		var better := best <= 0 or (score > best if mode == "days" else score < best)
+		if better:
+			_save_best(mode, limit, score)
+			text += "\n\nベスト更新！" if best > 0 else "\n\nはじめての記録！"
+		else:
+			text += "\n\nベスト %s" % _format_score(mode, best)
+	_show_popup(text, [["もう一回", _restart.bind(mode, limit)], ["タイトルへ", _restart.bind("", 0)]])
 
 
-func _restart(m: String) -> void:
+func _restart(m: String, n: int) -> void:
 	next_mode = m
+	next_limit = n
 	get_tree().reload_current_scene()
+
+
+# ---------------------------------------------------------------- ベスト記録
+
+func _best_key(m: String, n: int) -> String:
+	return "%s_%d" % [m, n]
+
+
+func _load_best(m: String, n: int) -> int:
+	var cfg := ConfigFile.new()
+	if cfg.load(best_path) != OK:
+		return 0
+	return cfg.get_value("best", _best_key(m, n), 0)
+
+
+func _save_best(m: String, n: int, score: int) -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(best_path)  # 無ければ空のまま
+	cfg.set_value("best", _best_key(m, n), score)
+	cfg.save(best_path)
+
+
+func _format_score(m: String, score: int) -> String:
+	return "%dG" % score if m == "days" else "%d日" % score
 
 
 # これ以上どうやっても進めない（種が買えない・育つ作物も売る物もない）
@@ -339,9 +394,11 @@ func say(text: String) -> void:
 
 func _refresh() -> void:
 	if mode == "goal":
-		day_label.text = "%d日目　目標 %dG" % [day, GOAL_MONEY]
+		day_label.text = "%d日目　目標 %dG" % [day, limit]
+	elif mode == "days":
+		day_label.text = "%d日目 / %d" % [min(day, limit), limit]
 	else:
-		day_label.text = "%d日目 / %d" % [min(day, DAYS_LIMIT), DAYS_LIMIT]
+		day_label.text = ""
 	money_label.text = "%dG" % money
 	var items := []
 	for key in _sorted_keys(bag):
