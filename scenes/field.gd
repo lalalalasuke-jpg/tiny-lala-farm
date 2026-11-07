@@ -100,6 +100,13 @@ func _draw_plot(i: int) -> void:
 		# のこり日数
 		var left := "あと%d日" % (need - p.growth)
 		draw_string(FONT, rect.position + Vector2(0, PLOT - 10), left, HORIZONTAL_ALIGNMENT_CENTER, PLOT, 22, Color(1, 1, 1, 0.9))
+	if not p.missed:
+		# お世話かんぺき（一度も水やりを忘れてない）のハート。収穫の当たりが出やすい
+		var h := rect.position + Vector2(PLOT - 24, PLOT - 52)
+		var pink := Color(1, 0.45, 0.6)
+		draw_circle(h + Vector2(-5, 0), 6, pink)
+		draw_circle(h + Vector2(5, 0), 6, pink)
+		draw_colored_polygon(PackedVector2Array([h + Vector2(-10.5, 2), h + Vector2(10.5, 2), h + Vector2(0, 13)]), pink)
 	if p.fert:
 		# 肥料のしるし
 		var at := rect.position + Vector2(22, 24)

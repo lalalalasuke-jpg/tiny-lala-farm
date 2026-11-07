@@ -11,10 +11,17 @@ const START_MONEY := 100
 const FERT_PRICE := 15
 const WITHER_WATERED := 0.05  # 水をあげた夜に枯れる確率
 const WITHER_DRY := 0.3  # 水やりを忘れた夜に枯れる確率
+# 収穫の当たり。植えてから一度も水やりを忘れなかった（お世話かんぺき）と当たりやすい
+const GOOD_CARED := 0.3  # ★品質のいいもの（GOOD_RATE 倍で売れる）
+const GOOD_BASE := 0.05
+const DOUBLE_CARED := 0.25  # 2個とれる
+const DOUBLE_BASE := 0.05
+const GOOD_RATE := 1.5
+const SET_BONUS := 150  # 出荷箱にカブ・トマト・イチゴがそろうと「野菜セット」でボーナス
 const CROPS := {
 	"turnip": {"name": "カブ", "seed": 10, "days": 2, "price": 30, "color": Color(0.97, 0.95, 0.97)},
 	"tomato": {"name": "トマト", "seed": 20, "days": 3, "price": 70, "color": Color(0.9, 0.2, 0.15)},
-	"strawberry": {"name": "イチゴ", "seed": 40, "days": 4, "price": 160, "color": Color(0.95, 0.25, 0.35)},
+	"strawberry": {"name": "イチゴ", "seed": 40, "days": 4, "price": 120, "color": Color(0.95, 0.25, 0.35)},
 }
 const SEED_ORDER := ["turnip", "tomato", "strawberry"]
 const NONE := -1  # 歩き終わっても何もしない
@@ -26,8 +33,10 @@ static var next_mode := ""
 var mode := ""  # "days" か "goal"
 var day := 1
 var money := START_MONEY
-var bag := {}  # 収穫して持っているもの（作物id → 個数）
-var shipped := {}  # 今日出荷箱に入れたもの（寝るとお金になる）
+# 収穫して持っているもの／今日出荷箱に入れたもの（寝るとお金になる）。
+# キーは作物id。★品質のものは "turnip★" のように★を付けて分ける。値は個数
+var bag := {}
+var shipped := {}
 var selected_seed := "turnip"
 var pending := NONE
 var busy := false  # 寝ている途中など、操作を受け付けない
@@ -50,7 +59,7 @@ var popup_buttons: VBoxContainer
 func _ready() -> void:
 	var plots := []
 	for i in 9:
-		plots.append({"tilled": false, "crop": "", "growth": 0, "watered": false, "fert": false, "dead": false})
+		plots.append({"tilled": false, "crop": "", "growth": 0, "watered": false, "fert": false, "dead": false, "missed": false})
 	field.plots = plots
 	field.crops = CROPS
 	player.bounds = field.WALK_AREA.grow(-30)
@@ -144,17 +153,13 @@ func _work(i: int) -> void:
 		p.crop = selected_seed
 		p.growth = 0
 		p.watered = false
+		p.missed = false
 		say("%sの種をまいたよ。水をあげてね" % c.name)
 	else:
 		var c: Dictionary = CROPS[p.crop]
 		var need: int = field.days_needed(p)
 		if p.growth >= need:
-			bag[p.crop] = bag.get(p.crop, 0) + 1
-			p.crop = ""
-			p.growth = 0
-			p.watered = false
-			p.fert = false
-			say("%sを収穫！出荷箱に持っていこう" % c.name)
+			_harvest(p)
 		elif selected_seed == "fert" and not p.fert:
 			if money < FERT_PRICE:
 				say("お金が足りないよ（肥料は %dG）" % FERT_PRICE)
@@ -170,15 +175,72 @@ func _work(i: int) -> void:
 	_refresh()
 
 
+func _harvest(p: Dictionary) -> void:
+	var cared: bool = not p.missed
+	var good := randf() < (GOOD_CARED if cared else GOOD_BASE)
+	var count := 2 if randf() < (DOUBLE_CARED if cared else DOUBLE_BASE) else 1
+	var key: String = p.crop + ("★" if good else "")
+	bag[key] = bag.get(key, 0) + count
+	var text := "%sを収穫！" % _item_name(key)
+	if good and count == 2:
+		text = "やった！品質のいい%sが2個もとれた！" % CROPS[p.crop].name
+	elif good:
+		text = "品質のいい%sがとれた！高く売れるよ" % CROPS[p.crop].name
+	elif count == 2:
+		text = "%sが2個とれた！" % CROPS[p.crop].name
+	say(text + "出荷箱に持っていこう")
+	p.crop = ""
+	p.growth = 0
+	p.watered = false
+	p.fert = false
+
+
 func _ship() -> void:
 	if bag.is_empty():
 		say("かばんが空っぽだよ。育った作物を収穫してね")
 		return
-	for id in bag:
-		shipped[id] = shipped.get(id, 0) + bag[id]
+	for key in bag:
+		shipped[key] = shipped.get(key, 0) + bag[key]
 	bag.clear()
-	say("出荷箱に入れたよ。寝るとお金になるよ")
+	var sets := _count_sets(shipped)
+	if sets > 0:
+		say("出荷箱に入れたよ。野菜セット×%dができてる！寝るとお金になるよ" % sets)
+	else:
+		say("出荷箱に入れたよ。カブ・トマト・イチゴがそろうと野菜セットでボーナス！")
 	_refresh()
+
+
+# ---------------------------------------------------------------- 作物アイテム
+
+# 表示用の並び: カブ → ★カブ → トマト → …
+func _sorted_keys(items: Dictionary) -> Array:
+	var keys := []
+	for id in SEED_ORDER:
+		for key in [id, id + "★"]:
+			if items.get(key, 0) > 0:
+				keys.append(key)
+	return keys
+
+
+func _crop_of(key: String) -> String:
+	return key.trim_suffix("★")
+
+
+func _item_name(key: String) -> String:
+	return ("★" if key.ends_with("★") else "") + CROPS[_crop_of(key)].name
+
+
+func _item_price(key: String) -> int:
+	var price: int = CROPS[_crop_of(key)].price
+	return roundi(price * GOOD_RATE) if key.ends_with("★") else price
+
+
+# items の中で、カブ・トマト・イチゴ1つずつのセットがいくつ作れるか（品質は問わない）
+func _count_sets(items: Dictionary) -> int:
+	var sets := 1 << 30
+	for id in SEED_ORDER:
+		sets = min(sets, items.get(id, 0) + items.get(id + "★", 0))
+	return sets
 
 
 # ---------------------------------------------------------------- 1日の終わり
@@ -192,10 +254,14 @@ func _on_sleep_pressed() -> void:
 	await _fade_to(1.0)
 	var earned := 0
 	var lines := []
-	for id in shipped:
-		var c: Dictionary = CROPS[id]
-		earned += c.price * shipped[id]
-		lines.append("%s×%d　%dG" % [c.name, shipped[id], c.price * shipped[id]])
+	for key in _sorted_keys(shipped):
+		var g: int = _item_price(key) * shipped[key]
+		earned += g
+		lines.append("%s×%d　%dG" % [_item_name(key), shipped[key], g])
+	var sets := _count_sets(shipped)
+	if sets > 0:
+		earned += SET_BONUS * sets
+		lines.append("野菜セット×%d　ボーナス %dG" % [sets, SET_BONUS * sets])
 	shipped.clear()
 	money += earned
 	var withered := {}
@@ -207,6 +273,8 @@ func _on_sleep_pressed() -> void:
 				withered[p.crop] = withered.get(p.crop, 0) + 1
 			elif p.watered:
 				p.growth += 1
+			if not p.watered:
+				p.missed = true  # 水やりを忘れた（収穫の当たりが出にくくなる）
 		p.watered = false
 	day += 1
 	_refresh()
@@ -276,9 +344,8 @@ func _refresh() -> void:
 		day_label.text = "%d日目 / %d" % [min(day, DAYS_LIMIT), DAYS_LIMIT]
 	money_label.text = "%dG" % money
 	var items := []
-	for id in SEED_ORDER:
-		if bag.has(id):
-			items.append("%s×%d" % [CROPS[id].name, bag[id]])
+	for key in _sorted_keys(bag):
+		items.append("%s×%d" % [_item_name(key), bag[key]])
 	bag_label.text = "かばん: " + ("からっぽ" if items.is_empty() else "  ".join(items))
 	var n := 0
 	for id in shipped:
