@@ -8,6 +8,9 @@ extends Node2D
 const DAYS_LIMIT := 30
 const GOAL_MONEY := 3000
 const START_MONEY := 100
+const FERT_PRICE := 15
+const WITHER_WATERED := 0.05  # 水をあげた夜に枯れる確率
+const WITHER_DRY := 0.3  # 水やりを忘れた夜に枯れる確率
 const CROPS := {
 	"turnip": {"name": "カブ", "seed": 10, "days": 2, "price": 30, "color": Color(0.97, 0.95, 0.97)},
 	"tomato": {"name": "トマト", "seed": 20, "days": 3, "price": 70, "color": Color(0.9, 0.2, 0.15)},
@@ -47,7 +50,7 @@ var popup_buttons: VBoxContainer
 func _ready() -> void:
 	var plots := []
 	for i in 9:
-		plots.append({"tilled": false, "crop": "", "growth": 0, "watered": false})
+		plots.append({"tilled": false, "crop": "", "growth": 0, "watered": false, "fert": false, "dead": false})
 	field.plots = plots
 	field.crops = CROPS
 	player.bounds = field.WALK_AREA.grow(-30)
@@ -124,7 +127,15 @@ func _work(i: int) -> void:
 	if not p.tilled:
 		p.tilled = true
 		say("耕したよ！下で種をえらんで、もう一回タップしてまこう")
+	elif p.dead:
+		p.crop = ""
+		p.dead = false
+		p.fert = false
+		say("枯れた作物を片付けたよ")
 	elif p.crop == "":
+		if selected_seed == "fert":
+			say("肥料は育っている作物に使うよ。種をえらんでまこう")
+			return
 		var c: Dictionary = CROPS[selected_seed]
 		if money < c.seed:
 			say("お金が足りないよ（%sの種は %dG）" % [c.name, c.seed])
@@ -136,15 +147,24 @@ func _work(i: int) -> void:
 		say("%sの種をまいたよ。水をあげてね" % c.name)
 	else:
 		var c: Dictionary = CROPS[p.crop]
-		if p.growth >= c.days:
+		var need: int = field.days_needed(p)
+		if p.growth >= need:
 			bag[p.crop] = bag.get(p.crop, 0) + 1
 			p.crop = ""
 			p.growth = 0
 			p.watered = false
+			p.fert = false
 			say("%sを収穫！出荷箱に持っていこう" % c.name)
+		elif selected_seed == "fert" and not p.fert:
+			if money < FERT_PRICE:
+				say("お金が足りないよ（肥料は %dG）" % FERT_PRICE)
+				return
+			money -= FERT_PRICE
+			p.fert = true
+			say("肥料をあげたよ。もう枯れないし、1日早く育つよ")
 		elif not p.watered:
 			p.watered = true
-			say("水をあげたよ。あと%d日で収穫" % (c.days - p.growth))
+			say("水をあげたよ。あと%d日で収穫" % (need - p.growth))
 		else:
 			say("今日はもう水やりしたよ。寝ると育つよ")
 	_refresh()
@@ -178,15 +198,26 @@ func _on_sleep_pressed() -> void:
 		lines.append("%s×%d　%dG" % [c.name, shipped[id], c.price * shipped[id]])
 	shipped.clear()
 	money += earned
+	var withered := {}
 	for p in field.plots:
-		if p.crop != "" and p.watered:
-			p.growth = min(p.growth + 1, CROPS[p.crop].days)
+		if p.crop != "" and not p.dead and p.growth < field.days_needed(p):
+			# 肥料なしの作物は、夜のうちに枯れることがある（水やりを忘れると枯れやすい）
+			if not p.fert and randf() < (WITHER_WATERED if p.watered else WITHER_DRY):
+				p.dead = true
+				withered[p.crop] = withered.get(p.crop, 0) + 1
+			elif p.watered:
+				p.growth += 1
 		p.watered = false
 	day += 1
 	_refresh()
 	var text := "出荷: なし"
 	if not lines.is_empty():
 		text = "出荷: +%dG\n%s" % [earned, "\n".join(lines)]
+	if not withered.is_empty():
+		var w := []
+		for id in withered:
+			w.append("%s×%d" % [CROPS[id].name, withered[id]])
+		text += "\n\n枯れちゃった: " + "  ".join(w)
 	if mode == "days" and day > DAYS_LIMIT:
 		_finish("%d日間おつかれさま！\n\n%s\n\nさいごの所持金\n%dG" % [DAYS_LIMIT, text, money])
 	elif mode == "goal" and money >= GOAL_MONEY:
@@ -221,7 +252,7 @@ func _stuck() -> bool:
 	if money >= CROPS.turnip.seed or not bag.is_empty() or not shipped.is_empty():
 		return false
 	for p in field.plots:
-		if p.crop != "":
+		if p.crop != "" and not p.dead:
 			return false
 	return true
 
@@ -272,21 +303,28 @@ func _build_ui() -> void:
 	message_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 
 	var group := ButtonGroup.new()
-	for k in SEED_ORDER.size():
-		var id: String = SEED_ORDER[k]
-		var c: Dictionary = CROPS[id]
+	var items: Array = SEED_ORDER + ["fert"]
+	for k in items.size():
+		var id: String = items[k]
 		var b := Button.new()
 		b.toggle_mode = true
 		b.button_group = group
 		b.button_pressed = id == selected_seed
-		b.text = "%s\n種 %dG\n%d日 → %dG" % [c.name, c.seed, c.days, c.price]
-		b.position = Vector2(24 + k * 228, 78)
-		b.size = Vector2(216, 110)
-		b.add_theme_font_size_override("font_size", 22)
+		var hint := ""
+		if id == "fert":
+			b.text = "肥料\n%dG\n枯れない\n1日早い" % FERT_PRICE
+			hint = "肥料をえらんだよ。育っている作物をタップしてあげよう"
+		else:
+			var c: Dictionary = CROPS[id]
+			b.text = "%s\n種 %dG\n%d日\n→ %dG" % [c.name, c.seed, c.days, c.price]
+			hint = "%sの種をえらんだよ。耕した畑をタップしてまこう" % c.name
+		b.position = Vector2(24 + k * 171, 76)
+		b.size = Vector2(159, 116)
+		b.add_theme_font_size_override("font_size", 19)
 		b.toggled.connect(func(on: bool) -> void:
 			if on:
 				selected_seed = id
-				say("%sの種をえらんだよ。耕した畑をタップしてまこう" % c.name))
+				say(hint))
 		bottom.add_child(b)
 		seed_buttons[id] = b
 

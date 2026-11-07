@@ -39,6 +39,10 @@ func _run() -> void:
 					main._work(i)
 					main._work(i)
 			main._ship()
+		if mode == "grow":  # 枯れた畑と肥料の見た目も確認
+			main.field.plots[3].dead = true
+			main.field.plots[5].fert = true
+			main.field.queue_redraw()
 		main.player.position = Vector2(300, 800)
 	await create_timer(0.3).timeout
 	await RenderingServer.frame_post_draw

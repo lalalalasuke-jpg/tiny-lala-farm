@@ -23,6 +23,12 @@ func plot_rect(i: int) -> Rect2:
 	return Rect2(ORIGIN + Vector2(c, r) * (PLOT + GAP), Vector2(PLOT, PLOT))
 
 
+# 収穫までに必要な日数（肥料をあげると1日早い）
+func days_needed(p: Dictionary) -> int:
+	var d: int = crops[p.crop].days
+	return max(1, d - 1) if p.fert else d
+
+
 func plot_center(i: int) -> Vector2:
 	return plot_rect(i).get_center()
 
@@ -73,18 +79,32 @@ func _draw_plot(i: int) -> void:
 		return
 	var crop: Dictionary = crops[p.crop]
 	var c := rect.get_center()
-	if p.growth >= crop.days:
+	var need := days_needed(p)
+	if p.dead:
+		# しおれた茎
+		var brown := Color(0.42, 0.3, 0.16)
+		draw_line(c + Vector2(0, 24), c + Vector2(4, -6), brown, 5)
+		draw_line(c + Vector2(4, -6), c + Vector2(-18, 8), brown, 4)
+		draw_line(c + Vector2(4, -6), c + Vector2(22, 12), brown, 4)
+		draw_string(FONT, rect.position + Vector2(0, PLOT - 10), "枯れちゃった", HORIZONTAL_ALIGNMENT_CENTER, PLOT, 20, Color(1, 1, 1, 0.9))
+		return
+	if p.growth >= need:
 		_draw_ripe(p.crop, crop.color, c)
 	else:
 		# 芽: 育つほど大きくなる
-		var t: float = 0.35 + 0.65 * float(p.growth) / crop.days
+		var t: float = 0.35 + 0.65 * float(p.growth) / need
 		var leaf := Color(0.3, 0.75, 0.3)
 		draw_line(c + Vector2(0, 20), c + Vector2(0, 20 - 30 * t), leaf.darkened(0.2), 4)
 		draw_circle(c + Vector2(-12 * t, 20 - 30 * t), 12 * t, leaf)
 		draw_circle(c + Vector2(12 * t, 20 - 30 * t), 12 * t, leaf)
 		# のこり日数
-		var left := "あと%d日" % (crop.days - p.growth)
+		var left := "あと%d日" % (need - p.growth)
 		draw_string(FONT, rect.position + Vector2(0, PLOT - 10), left, HORIZONTAL_ALIGNMENT_CENTER, PLOT, 22, Color(1, 1, 1, 0.9))
+	if p.fert:
+		# 肥料のしるし
+		var at := rect.position + Vector2(22, 24)
+		draw_circle(at, 15, Color(0.95, 0.75, 0.3))
+		draw_string(FONT, at + Vector2(-15, 7), "肥", HORIZONTAL_ALIGNMENT_CENTER, 30, 20, Color(0.45, 0.28, 0.1))
 	if p.watered:
 		_draw_drop(rect.position + Vector2(PLOT - 22, 24))
 
