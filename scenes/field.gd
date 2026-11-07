@@ -9,12 +9,14 @@ const GAP := 10.0
 const ORIGIN := Vector2(140, 330)  # 左上の畑の左上の角
 const WALK_AREA := Rect2(30, 130, 660, 860)  # キャラが歩ける範囲
 const BOX_RECT := Rect2(540, 830, 120, 90)
+const BOX := 99  # main.gd の BOX と同じ（予約の行き先が出荷箱）
 
 const FONT := preload("res://fonts/NotoSansJP-Subset.ttf")
 
 var plots: Array = []  # main.gd から渡される（Dictionary の配列）
 var crops: Dictionary = {}
 var shipped_count := 0
+var queued: Array = []  # タップの予約の行き先（畑の番号か BOX）を順番に
 
 
 func plot_rect(i: int) -> Rect2:
@@ -60,6 +62,25 @@ func _draw() -> void:
 	for i in plots.size():
 		_draw_plot(i)
 	_draw_box()
+	_draw_queue()
+
+
+# 予約の順番の数字。同じ場所に2つ以上あれば「1・3」のように並べる
+func _draw_queue() -> void:
+	var orders := {}
+	for n in queued.size():
+		var at: int = queued[n]
+		if not orders.has(at):
+			orders[at] = []
+		orders[at].append(str(n + 1))
+	for at in orders:
+		var text := "・".join(orders[at])
+		var top := BOX_RECT.position + Vector2(BOX_RECT.size.x / 2, 0) if at == BOX else plot_rect(at).position + Vector2(PLOT / 2, 0)
+		var w := 16.0 + 14.0 * text.length()
+		var r := Rect2(top + Vector2(-w / 2, 6), Vector2(w, 32))
+		draw_rect(r, Color(1, 1, 1, 0.92))
+		draw_rect(r, Color(0.3, 0.45, 0.85), false, 3)
+		draw_string(FONT, r.position + Vector2(0, 24), text, HORIZONTAL_ALIGNMENT_CENTER, w, 22, Color(0.2, 0.3, 0.6))
 
 
 func _draw_plot(i: int) -> void:

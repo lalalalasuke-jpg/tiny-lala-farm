@@ -25,8 +25,8 @@ const CROPS := {
 	"strawberry": {"name": "イチゴ", "seed": 40, "days": 4, "price": 120, "color": Color(0.95, 0.25, 0.35)},
 }
 const SEED_ORDER := ["turnip", "tomato", "strawberry"]
-const NONE := -1  # 歩き終わっても何もしない
-const BOX := 99  # 歩き終わったら出荷箱に入れる
+const BOX := 99  # 予約の行き先: 出荷箱
+const QUEUE_MAX := 12
 
 # 「もう一回」でシーンを読み直しても残るように static にする。空ならタイトルから
 static var next_mode := ""
@@ -42,7 +42,9 @@ var money := START_MONEY
 var bag := {}
 var shipped := {}
 var selected_seed := "turnip"
-var pending := NONE
+# タップの予約。{"at": 畑の番号 か BOX, "use": タップした時にえらんでいた種か肥料}。
+# 先頭から順に歩いていって作業する
+var queue: Array = []
 var busy := false  # 寝ている途中など、操作を受け付けない
 
 @onready var field: Node2D = $Field
@@ -69,6 +71,7 @@ func _ready() -> void:
 	player.bounds = field.WALK_AREA.grow(-30)
 	player.position = Vector2(360, 880)
 	player.arrived.connect(_on_arrived)
+	player.canceled.connect(_clear_queue)
 	_build_ui()
 	busy = true
 	if next_mode != "":
@@ -103,7 +106,7 @@ func _start(m: String, n: int) -> void:
 	limit = n
 	popup.visible = false
 	_refresh()
-	say("畑をタップすると、歩いていって耕すよ")
+	say("畑をタップすると歩いていって耕すよ。続けてタップすると順番にやるよ")
 	await _fade_to(0.0)
 	busy = false
 
@@ -119,26 +122,53 @@ func _unhandled_input(event: InputEvent) -> void:
 		_act_here()
 
 
+# 畑か出荷箱をタップすると予約に足す（歩いている途中でも前の作業は消えない）。
+# 草のところをタップすると、予約を取り消してそこへ歩く
 func _on_tap(pos: Vector2) -> void:
 	var i: int = field.plot_at(pos)
-	if i >= 0:
-		pending = i
-		player.walk_to(field.plot_center(i))
-	elif field.near_box(pos):
-		pending = BOX
-		player.walk_to(field.box_stand_point())
-	elif field.WALK_AREA.has_point(pos):
-		pending = NONE
-		player.walk_to(pos)
+	if i < 0 and field.near_box(pos):
+		i = BOX
+	if i < 0:
+		if field.WALK_AREA.has_point(pos):
+			_clear_queue()
+			player.walk_to(pos)
+		return
+	if queue.size() >= QUEUE_MAX:
+		say("予約がいっぱいだよ。草のところをタップすると取り消せるよ")
+		return
+	queue.append({"at": i, "use": selected_seed})
+	_show_queue()
+	if queue.size() == 1:
+		_walk_next()
+
+
+func _walk_next() -> void:
+	if queue.is_empty():
+		return
+	var at: int = queue[0].at
+	player.walk_to(field.box_stand_point() if at == BOX else field.plot_center(at))
 
 
 func _on_arrived() -> void:
-	var what := pending
-	pending = NONE
-	if what == BOX:
+	if queue.is_empty():
+		return
+	var job: Dictionary = queue.pop_front()
+	if job.at == BOX:
 		_ship()
-	elif what >= 0:
-		_work(what)
+	else:
+		_work(job.at, job.use)
+	_show_queue()
+	_walk_next()
+
+
+func _clear_queue() -> void:
+	queue.clear()
+	_show_queue()
+
+
+func _show_queue() -> void:
+	field.queued = queue.map(func(j): return j.at)
+	field.queue_redraw()
 
 
 # キーボード（スペース/Enter）: 足元の畑か、近くの出荷箱
@@ -152,7 +182,10 @@ func _act_here() -> void:
 
 # ---------------------------------------------------------------- 畑仕事
 
-func _work(i: int) -> void:
+# use: まく種か "fert"（肥料）。省略すると今えらんでいるもの
+func _work(i: int, use := "") -> void:
+	if use == "":
+		use = selected_seed
 	var p: Dictionary = field.plots[i]
 	if not p.tilled:
 		p.tilled = true
@@ -163,15 +196,15 @@ func _work(i: int) -> void:
 		p.fert = false
 		say("枯れた作物を片付けたよ")
 	elif p.crop == "":
-		if selected_seed == "fert":
+		if use == "fert":
 			say("肥料は育っている作物に使うよ。種をえらんでまこう")
 			return
-		var c: Dictionary = CROPS[selected_seed]
+		var c: Dictionary = CROPS[use]
 		if money < c.seed:
 			say("お金が足りないよ（%sの種は %dG）" % [c.name, c.seed])
 			return
 		money -= c.seed
-		p.crop = selected_seed
+		p.crop = use
 		p.growth = 0
 		p.watered = false
 		p.missed = false
@@ -181,7 +214,7 @@ func _work(i: int) -> void:
 		var need: int = field.days_needed(p)
 		if p.growth >= need:
 			_harvest(p)
-		elif selected_seed == "fert" and not p.fert:
+		elif use == "fert" and not p.fert:
 			if money < FERT_PRICE:
 				say("お金が足りないよ（肥料は %dG）" % FERT_PRICE)
 				return
@@ -270,7 +303,7 @@ func _on_sleep_pressed() -> void:
 	if busy:
 		return
 	busy = true
-	pending = NONE
+	_clear_queue()
 	player.walking = false
 	await _fade_to(1.0)
 	var earned := 0

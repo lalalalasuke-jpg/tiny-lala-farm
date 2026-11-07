@@ -1,6 +1,6 @@
 extends SceneTree
 # 見た目確認用: 少し遊んだ状態にしてスクショを保存する
-# 使い方: godot --path . --resolution 720x1280 --script res://tools/screenshot.gd -- <出力.png> [title|lengths|grow|result]
+# 使い方: godot --path . --resolution 720x1280 --script res://tools/screenshot.gd -- <出力.png> [title|lengths|grow|result|queue]
 func _initialize() -> void:
 	_run.call_deferred()
 
@@ -11,6 +11,25 @@ func _run() -> void:
 	var main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
 	await create_timer(0.2).timeout
+	if mode == "queue":  # タップの予約: 畑を続けてタップして、歩いている途中を撮る
+		main.best_path = "user://test_best.cfg"
+		main._start("days", 30)
+		await create_timer(0.6).timeout
+		for i in [0, 0, 1, 1, 4]:  # 0と1は「耕す→まく」、4は耕すだけ
+			main._on_tap(main.field.plot_center(i))
+		main.selected_seed = "tomato"  # 予約したあとに種を変えても、予約はカブのまま
+		main._on_tap(main.field.BOX_RECT.get_center())
+		await create_timer(0.25).timeout
+		print("queue=", main.field.queued)
+		await RenderingServer.frame_post_draw
+		root.get_texture().get_image().save_png(args[0])
+		await create_timer(4.0).timeout
+		var crops := []
+		for i in [0, 1, 4]:
+			crops.append([main.field.plots[i].tilled, main.field.plots[i].crop])
+		print("after=", crops, " queue=", main.queue.size(), " money=", main.money)
+		quit()
+		return
 	if mode == "lengths":  # 長さえらび（result で保存したテスト用のベストが出る）
 		main.best_path = "user://test_best.cfg"
 		main._show_lengths("days")

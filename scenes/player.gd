@@ -1,9 +1,10 @@
 extends Node2D
 
 # ららすけ（プレイヤー）。walk_to() で目的地へ歩き、着いたら arrived を出す。
-# PC では矢印キーでも歩ける（そのときは目的地は取り消し）。
+# PC では矢印キーでも歩ける（そのときは目的地は取り消して canceled を出す）。
 
 signal arrived
+signal canceled
 
 const SPEED := 420.0
 
@@ -22,7 +23,9 @@ func _process(delta: float) -> void:
 	var dir := Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
 	var moving := false
 	if dir != Vector2.ZERO:
-		walking = false
+		if walking:
+			walking = false
+			canceled.emit()
 		position = (position + dir * SPEED * delta).clamp(bounds.position, bounds.end)
 		moving = true
 	elif walking:
