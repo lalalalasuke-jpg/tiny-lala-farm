@@ -1,10 +1,12 @@
 extends Node2D
 
-# Tiny Lala Farm: 5日間で畑を育てて、出荷でいくら稼げるか。
+# Tiny Lala Farm: 畑を育てて、出荷でお金をためるゲーム。
 # 畑をタップ → ららすけが歩いていって、その畑に合った作業をする
 #   （耕す → 種をまく → 水やり → 収穫）。収穫したものは出荷箱へ。寝ると次の日。
+# モードは2つ: 30日でいくら稼げるか（days）／3000Gを何日でためられるか（goal）
 
-const LAST_DAY := 5
+const DAYS_LIMIT := 30
+const GOAL_MONEY := 3000
 const START_MONEY := 100
 const CROPS := {
 	"turnip": {"name": "カブ", "seed": 10, "days": 2, "price": 30, "color": Color(0.97, 0.95, 0.97)},
@@ -15,6 +17,10 @@ const SEED_ORDER := ["turnip", "tomato", "strawberry"]
 const NONE := -1  # 歩き終わっても何もしない
 const BOX := 99  # 歩き終わったら出荷箱に入れる
 
+# 「もう一回」でシーンを読み直しても残るように static にする。空ならタイトルから
+static var next_mode := ""
+
+var mode := ""  # "days" か "goal"
 var day := 1
 var money := START_MONEY
 var bag := {}  # 収穫して持っているもの（作物id → 個数）
@@ -35,7 +41,7 @@ var sleep_button: Button
 var fade: ColorRect
 var popup: PanelContainer
 var popup_label: Label
-var popup_button: Button
+var popup_buttons: VBoxContainer
 
 
 func _ready() -> void:
@@ -48,8 +54,25 @@ func _ready() -> void:
 	player.position = Vector2(360, 880)
 	player.arrived.connect(_on_arrived)
 	_build_ui()
+	busy = true
+	if next_mode != "":
+		_start(next_mode)
+	else:
+		fade.color.a = 0.6
+		_refresh()
+		_show_popup("Tiny Lala Farm\n\nどっちで遊ぶ？", [
+			["%d日チャレンジ\n%d日でいくら稼げる？" % [DAYS_LIMIT, DAYS_LIMIT], _start.bind("days")],
+			["%dGチャレンジ\n何日でためられる？" % GOAL_MONEY, _start.bind("goal")],
+		])
+
+
+func _start(m: String) -> void:
+	mode = m
+	popup.visible = false
 	_refresh()
 	say("畑をタップすると、歩いていって耕すよ")
+	await _fade_to(0.0)
+	busy = false
 
 
 # ---------------------------------------------------------------- 操作
@@ -164,24 +187,43 @@ func _on_sleep_pressed() -> void:
 	var text := "出荷: なし"
 	if not lines.is_empty():
 		text = "出荷: +%dG\n%s" % [earned, "\n".join(lines)]
-	if day > LAST_DAY:
-		var diff := money - START_MONEY
-		_show_popup("5日間おつかれさま！\n\n%s\n\nさいごの所持金\n%dG\n（はじめより %s%dG）" % [text, money, "+" if diff >= 0 else "", diff], "もう一回")
+	if mode == "days" and day > DAYS_LIMIT:
+		_finish("%d日間おつかれさま！\n\n%s\n\nさいごの所持金\n%dG" % [DAYS_LIMIT, text, money])
+	elif mode == "goal" and money >= GOAL_MONEY:
+		_finish("%dG達成！\n\n%s\n\nかかった日数\n%d日" % [GOAL_MONEY, text, day - 1])
+	elif mode == "goal" and _stuck():
+		_finish("お金も作物もなくなっちゃった…\n\n%d日目 所持金 %dG" % [day, money])
 	else:
-		_show_popup("%d日目の朝\n\n%s\n\n所持金 %dG" % [day, text, money], "畑へ行く")
+		_show_popup("%d日目の朝\n\n%s\n\n所持金 %dG" % [day, text, money], [["畑へ行く", _wake_up]])
 
 
-func _on_popup_pressed() -> void:
-	if day > LAST_DAY:
-		get_tree().reload_current_scene()
-		return
+func _wake_up() -> void:
 	popup.visible = false
 	await _fade_to(0.0)
 	busy = false
-	if day == LAST_DAY:
+	if mode == "days" and day == DAYS_LIMIT:
 		say("今日が最終日！収穫したものは出荷箱へ")
 	else:
 		say("おはよう！水やりを忘れずにね")
+
+
+func _finish(text: String) -> void:
+	_show_popup(text, [["もう一回", _restart.bind(mode)], ["タイトルへ", _restart.bind("")]])
+
+
+func _restart(m: String) -> void:
+	next_mode = m
+	get_tree().reload_current_scene()
+
+
+# これ以上どうやっても進めない（種が買えない・育つ作物も売る物もない）
+func _stuck() -> bool:
+	if money >= CROPS.turnip.seed or not bag.is_empty() or not shipped.is_empty():
+		return false
+	for p in field.plots:
+		if p.crop != "":
+			return false
+	return true
 
 
 func _fade_to(alpha: float) -> void:
@@ -197,7 +239,10 @@ func say(text: String) -> void:
 
 
 func _refresh() -> void:
-	day_label.text = "%d日目 / %d" % [min(day, LAST_DAY), LAST_DAY]
+	if mode == "goal":
+		day_label.text = "%d日目　目標 %dG" % [day, GOAL_MONEY]
+	else:
+		day_label.text = "%d日目 / %d" % [min(day, DAYS_LIMIT), DAYS_LIMIT]
 	money_label.text = "%dG" % money
 	var items := []
 	for id in SEED_ORDER:
@@ -267,16 +312,24 @@ func _build_ui() -> void:
 	popup_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	popup_label.add_theme_font_size_override("font_size", 30)
 	box.add_child(popup_label)
-	popup_button = Button.new()
-	popup_button.custom_minimum_size = Vector2(0, 72)
-	popup_button.add_theme_font_size_override("font_size", 30)
-	popup_button.pressed.connect(_on_popup_pressed)
-	box.add_child(popup_button)
+	popup_buttons = VBoxContainer.new()
+	popup_buttons.add_theme_constant_override("separation", 16)
+	box.add_child(popup_buttons)
 
 
-func _show_popup(text: String, button: String) -> void:
+# buttons: [["ボタンの文字", 押したときの Callable], ...]
+func _show_popup(text: String, buttons: Array) -> void:
 	popup_label.text = text
-	popup_button.text = button
+	for b in popup_buttons.get_children():
+		popup_buttons.remove_child(b)
+		b.queue_free()
+	for spec in buttons:
+		var b := Button.new()
+		b.text = spec[0]
+		b.custom_minimum_size = Vector2(0, 72)
+		b.add_theme_font_size_override("font_size", 28)
+		b.pressed.connect(spec[1])
+		popup_buttons.add_child(b)
 	popup.visible = true
 	popup.reset_size()
 	popup.position.y = (1280 - popup.size.y) / 2
