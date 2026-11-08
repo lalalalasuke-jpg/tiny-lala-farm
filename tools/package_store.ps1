@@ -14,7 +14,7 @@ if (Test-Path $out) { Remove-Item $out -Recurse -Force }
 New-Item -ItemType Directory -Force $out | Out-Null
 New-Item -ItemType File -Force (Join-Path $buildDir ".gdignore") | Out-Null
 
-& $godot --headless --path $proj --export-release "Web" "build/store/index.html"
+& $godot --headless --path $proj --export-release "Web (store)" "build/store/index.html"
 if ($LASTEXITCODE -ne 0) { throw "エクスポート失敗 (exit $LASTEXITCODE)。テンプレート未インストールなら tools\install_templates.ps1" }
 
 Copy-Item (Join-Path $proj "docs\store\CREDITS.txt") $out
