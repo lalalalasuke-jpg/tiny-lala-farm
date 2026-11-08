@@ -1,6 +1,6 @@
 extends SceneTree
 # 見た目確認用: 少し遊んだ状態にしてスクショを保存する
-# 使い方: godot --path . --resolution 720x1280 --script res://tools/screenshot.gd -- <出力.png> [title|howto|credits|lengths|grow|result|queue|showcase|cover]
+# 使い方: godot --path . --resolution 720x1280 --script res://tools/screenshot.gd -- <出力.png> [title|howto|credits|lengths|grow|result|queue|showcase|cover|header]
 func _initialize() -> void:
 	_run.call_deferred()
 
@@ -30,7 +30,7 @@ func _run() -> void:
 		print("after=", crops, " queue=", main.queue.size(), " money=", main.money)
 		quit()
 		return
-	if mode == "showcase" or mode == "cover":  # 投稿ページ用: にぎやかな畑を直接作って撮る
+	if mode == "showcase" or mode == "cover" or mode == "header":  # 投稿ページ用: にぎやかな畑を直接作って撮る
 		main.best_path = "user://test_best.cfg"
 		main._start("days", 30)
 		await create_timer(0.6).timeout
@@ -62,8 +62,9 @@ func _run() -> void:
 		main.say("トマトが2個とれた！出荷箱に持っていこう")
 		main.player.position = Vector2(560, 520)
 		main.player.face = -1.0
-		if mode == "cover":
-			main.get_node("Player").visible = true
+		if mode == "header":  # 横長に切り取ると下が切れるので、キャラを売り地の横まで上げる
+			main.player.position = Vector2(655, 430)
+		if mode != "showcase":
 			var title := Label.new()
 			title.text = "Tiny Lala Farm"
 			title.add_theme_font_override("font", load("res://fonts/NotoSansJP-Subset.ttf"))
@@ -81,6 +82,10 @@ func _run() -> void:
 		if mode == "cover":  # 630×500（itch.io の表紙）: 畑のまわりを切り取って縮める
 			img = img.get_region(Rect2i(0, 160, 720, 571))
 			img.resize(630, 500, Image.INTERPOLATE_LANCZOS)
+		elif mode == "header":  # 1280×670（note の見出し画像）。大きい解像度で撮って、タイトルと上2段の畑を切り取る
+			var k: float = img.get_width() / 720.0
+			img = img.get_region(Rect2i(0, int(150 * k), img.get_width(), int(377 * k)))
+			img.resize(1280, 670, Image.INTERPOLATE_LANCZOS)
 		img.save_png(args[0])
 		quit()
 		return
