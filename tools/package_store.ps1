@@ -1,7 +1,9 @@
 # 投稿サイト（itch.io / PLiCy など）用の zip を作る。
 # 使い方: powershell -File tools\package_store.ps1
 # 出力: build\tiny-lala-farm-web.zip（zip の一番上に index.html がある形。サイトの「ブラウザで遊ぶ」にそのまま上げられる）
-# GitHub Pages 用（tools\build_web.ps1）と違って、noindex は付けず、クレジットとライセンスの文書を同梱する。
+# GitHub Pages 用（tools\build_web.ps1）と違って、書き出し設定「Web (store)」を使う:
+#   PWA（Service Worker）なし（PLiCy は禁止）、WebGL の preserveDrawingBuffer を true（PLiCy の決まり）。
+# noindex は付けず、クレジットとライセンスの文書を同梱する。
 $ErrorActionPreference = "Stop"
 
 $godot = "C:\Users\PC_User\AppData\Local\Microsoft\WinGet\Packages\GodotEngine.GodotEngine_Microsoft.Winget.Source_8wekyb3d8bbwe\Godot_v4.7.2-stable_win64_console.exe"
