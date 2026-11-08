@@ -535,7 +535,8 @@ func _build_ui() -> void:
 	var bottom := _rect(hud, Rect2(0, 990, 720, 290), Color(0.98, 0.94, 0.84))
 	bottom.theme = theme
 	_rect(bottom, Rect2(0, 0, 720, 4), Color(0.86, 0.74, 0.54))
-	message_label = _label(bottom, Rect2(24, 8, 672, 64), 26, Color(0.35, 0.25, 0.15))
+	message_label = _label(bottom, Rect2(24, 8, 672, 78), 24, Color(0.35, 0.25, 0.15))
+	message_label.add_theme_constant_override("line_spacing", -6)
 	message_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	message_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 
@@ -555,9 +556,9 @@ func _build_ui() -> void:
 			var c: Dictionary = CROPS[id]
 			b.text = "%s\n種 %dG\n%d日\n→ %dG" % [c.name, c.seed, c.days, c.price]
 			hint = "%sの種をえらんだよ。耕した畑をタップしてまこう" % c.name
-		b.position = Vector2(24 + k * 171, 76)
-		b.size = Vector2(159, 116)
-		b.add_theme_font_size_override("font_size", 19)
+		b.position = Vector2(24 + k * 171, 90)
+		b.size = Vector2(159, 108)
+		b.add_theme_font_size_override("font_size", 18)
 		b.toggled.connect(func(on: bool) -> void:
 			if on:
 				selected_seed = id
@@ -568,8 +569,8 @@ func _build_ui() -> void:
 
 	sleep_button = Button.new()
 	sleep_button.text = "寝る（次の日へ）"
-	sleep_button.position = Vector2(24, 200)
-	sleep_button.size = Vector2(672, 72)
+	sleep_button.position = Vector2(24, 206)
+	sleep_button.size = Vector2(672, 64)
 	sleep_button.add_theme_font_size_override("font_size", 30)
 	sleep_button.pressed.connect(_on_sleep_pressed)
 	# 寝るボタンだけ夜の色
