@@ -5,7 +5,7 @@ config_version=5
 
 [application]
 
-config/name="tiny-lala-farm"
+config/name="Tiny Lala Farm"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 

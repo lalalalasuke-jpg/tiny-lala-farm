@@ -33,6 +33,34 @@ const CROPS := {
 	"strawberry": {"name": "イチゴ", "seed": 40, "days": 4, "price": 120, "color": Color(0.95, 0.25, 0.35)},
 }
 const SEED_ORDER := ["turnip", "tomato", "strawberry"]
+const HOWTO := """あそびかた
+
+畑をタップすると、歩いていって作業するよ
+耕す → 種まき → 水やり → 収穫
+続けてタップすると順番に作業するよ
+（草をタップすると取り消し）
+
+収穫したものは出荷箱へ。寝るとお金になるよ
+
+水やりを忘れると枯れやすくなるよ
+毎日お世話すると（ハートが目印）
+★品質や2個とれる「当たり」が出やすいよ
+
+肥料: 枯れない＋1日早く育つ
+カブ・トマト・イチゴがそろうと
+「野菜セット」でボーナス
+売り地を買うと畑が広がるよ"""
+const CREDITS := """クレジット
+
+企画・ゲームデザイン: ららすけ
+プログラム・絵・効果音: Claude（Anthropic の AI）
+ららすけと AI がいっしょに作ったゲームです
+
+フォント: Noto Sans JP（SIL Open Font License 1.1）
+効果音（素材）: Kenney（CC0）
+ゲームエンジン: Godot Engine（MIT License）
+© Juan Linietsky, Ariel Manzur and contributors
+godotengine.org/license"""
 const BOX := 99  # 予約の行き先: 出荷箱
 const QUEUE_MAX := 12
 
@@ -106,7 +134,17 @@ func _show_title() -> void:
 	_show_popup("Tiny Lala Farm\n\nどっちで遊ぶ？", [
 		["日数チャレンジ\n決まった日数でいくら稼げる？", _show_lengths.bind("days")],
 		["金額チャレンジ\n目標金額を何日でためられる？", _show_lengths.bind("goal")],
+		["あそびかた", _show_howto],
+		["クレジット", _show_credits],
 	])
+
+
+func _show_howto() -> void:
+	_show_popup(HOWTO, [["もどる", _show_title]], 22)
+
+
+func _show_credits() -> void:
+	_show_popup(CREDITS, [["もどる", _show_title]], 22)
 
 
 func _show_lengths(m: String) -> void:
@@ -631,8 +669,8 @@ func _build_ui() -> void:
 	fade = _rect(hud, Rect2(0, 0, 720, 1280), Color(0.05, 0.05, 0.15, 0.0))
 
 	popup = PanelContainer.new()
-	popup.position = Vector2(110, 360)
-	popup.custom_minimum_size = Vector2(500, 0)
+	popup.position = Vector2(60, 360)
+	popup.custom_minimum_size = Vector2(600, 0)
 	popup.visible = false
 	popup.theme = theme
 	hud.add_child(popup)
@@ -641,6 +679,8 @@ func _build_ui() -> void:
 	popup.add_child(box)
 	popup_label = Label.new()
 	popup_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	popup_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	popup_label.custom_minimum_size = Vector2(544, 0)  # 600 - 左右の余白28×2
 	popup_label.add_theme_font_size_override("font_size", 30)
 	box.add_child(popup_label)
 	popup_buttons = VBoxContainer.new()
@@ -686,8 +726,9 @@ func _make_theme() -> Theme:
 
 
 # buttons: [["ボタンの文字", 押したときの Callable], ...]
-func _show_popup(text: String, buttons: Array) -> void:
-	popup_label.text = text
+func _show_popup(text: String, buttons: Array, font_size := 30) -> void:
+	popup_label.text = text.replace("\r", "")  # Windows の改行(CRLF)で行間が倍にならないように
+	popup_label.add_theme_font_size_override("font_size", font_size)
 	for b in popup_buttons.get_children():
 		popup_buttons.remove_child(b)
 		b.queue_free()

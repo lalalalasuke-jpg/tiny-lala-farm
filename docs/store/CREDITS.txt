@@ -1,0 +1,10 @@
+Tiny Lala Farm
+
+企画・ゲームデザイン / Game design: ららすけ (lalasuke)
+プログラム・絵・効果音 / Code, art, sound: Claude (AI by Anthropic)
+ららすけと AI がいっしょに作ったゲームです。
+Made together by lalasuke and an AI (Claude).
+
+フォント / Font: Noto Sans JP — SIL Open Font License 1.1 (OFL.txt)
+効果音（素材）/ Sound effects (asset set): Kenney (www.kenney.nl) — CC0
+ゲームエンジン / Engine: Godot Engine — MIT License (LICENSE-godot.txt)

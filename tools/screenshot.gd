@@ -1,6 +1,6 @@
 extends SceneTree
 # 見た目確認用: 少し遊んだ状態にしてスクショを保存する
-# 使い方: godot --path . --resolution 720x1280 --script res://tools/screenshot.gd -- <出力.png> [title|lengths|grow|result|queue]
+# 使い方: godot --path . --resolution 720x1280 --script res://tools/screenshot.gd -- <出力.png> [title|howto|credits|lengths|grow|result|queue|showcase|cover]
 func _initialize() -> void:
 	_run.call_deferred()
 
@@ -30,7 +30,65 @@ func _run() -> void:
 		print("after=", crops, " queue=", main.queue.size(), " money=", main.money)
 		quit()
 		return
-	if mode == "lengths":  # 長さえらび（result で保存したテスト用のベストが出る）
+	if mode == "showcase" or mode == "cover":  # 投稿ページ用: にぎやかな畑を直接作って撮る
+		main.best_path = "user://test_best.cfg"
+		main._start("days", 30)
+		await create_timer(0.6).timeout
+		main.day = 12
+		main.money = 1840
+		main.bag = {"tomato": 2, "strawberry★": 1}
+		main.shipped = {"turnip": 3}
+		var looks := [
+			["strawberry", 4, true, false, false], ["tomato", 3, true, false, false], ["turnip", 2, true, true, false], ["", 0, false, false, false],
+			["strawberry", 2, true, false, true], ["tomato", 1, false, false, false], ["turnip", 1, true, false, true], ["", 0, false, false, false],
+			["tomato", 3, true, true, false], ["strawberry", 1, true, false, false], ["", 0, true, false, false], ["", 0, false, false, false],
+			["", 0, false, false, false], ["", 0, false, false, false], ["", 0, false, false, false], ["", 0, false, false, false],
+		]
+		for i in 16:
+			var p: Dictionary = main.field.plots[i]
+			var l: Array = looks[i]
+			if i == 3:
+				p.owned = true
+			if not p.owned:
+				continue
+			p.tilled = true
+			p.crop = l[0]
+			p.growth = l[1]
+			p.watered = l[2]
+			p.fert = l[3]
+			p.missed = l[4]
+		main.bought = 1
+		main._refresh()
+		main.say("トマトが2個とれた！出荷箱に持っていこう")
+		main.player.position = Vector2(560, 520)
+		main.player.face = -1.0
+		if mode == "cover":
+			main.get_node("Player").visible = true
+			var title := Label.new()
+			title.text = "Tiny Lala Farm"
+			title.add_theme_font_override("font", load("res://fonts/NotoSansJP-Subset.ttf"))
+			title.add_theme_font_size_override("font_size", 76)
+			title.add_theme_color_override("font_color", Color(1, 0.98, 0.9))
+			title.add_theme_color_override("font_outline_color", Color(0.42, 0.26, 0.13))
+			title.add_theme_constant_override("outline_size", 18)
+			title.position = Vector2(0, 180)
+			title.size = Vector2(720, 110)
+			title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			main.add_child(title)
+		await create_timer(0.3).timeout
+		await RenderingServer.frame_post_draw
+		var img := root.get_texture().get_image()
+		if mode == "cover":  # 630×500（itch.io の表紙）: 畑のまわりを切り取って縮める
+			img = img.get_region(Rect2i(0, 160, 720, 571))
+			img.resize(630, 500, Image.INTERPOLATE_LANCZOS)
+		img.save_png(args[0])
+		quit()
+		return
+	if mode == "howto":
+		main._show_howto()
+	elif mode == "credits":
+		main._show_credits()
+	elif mode == "lengths":  # 長さえらび（result で保存したテスト用のベストが出る）
 		main.best_path = "user://test_best.cfg"
 		main._show_lengths("days")
 	elif mode != "title":
