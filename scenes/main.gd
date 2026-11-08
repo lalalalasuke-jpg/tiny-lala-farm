@@ -8,8 +8,8 @@ extends Node2D
 const DAY_OPTIONS := [20, 30, 50, 60]  # 日数チャレンジの長さ
 const GOAL_OPTIONS := [3000, 5000, 10000]  # 金額チャレンジの目標
 const BEST_PATH := "user://best.cfg"  # ベスト記録（Web ではブラウザの中に保存される）
-# 効果音のセット。kenney = 無料素材（CC0、sfx/kenney）、code = コードで作った音（tools/make_sfx.py）
-const SFX_SETS := ["kenney", "code", "off"]
+# 効果音のセット（はじめは code）。kenney = 無料素材（CC0、sfx/kenney）、code = コードで作った音（tools/make_sfx.py）
+const SFX_SETS := ["code", "kenney", "off"]
 const SFX_NAMES := {"kenney": "音: 素材", "code": "音: コード", "off": "音: なし"}
 const START_MONEY := 100
 const FERT_PRICE := 15
@@ -48,7 +48,7 @@ var selected_seed := "turnip"
 # タップの予約。{"at": 畑の番号 か BOX, "use": タップした時にえらんでいた種か肥料}。
 # 先頭から順に歩いていって作業する
 var queue: Array = []
-var sfx_set := "kenney"
+var sfx_set := "code"
 var _sfx_cache := {}
 var _sfx_players: Array = []
 var _sfx_next := 0
