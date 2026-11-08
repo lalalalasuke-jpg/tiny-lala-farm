@@ -8,6 +8,9 @@ extends Node2D
 const DAY_OPTIONS := [20, 30, 50, 60]  # 日数チャレンジの長さ
 const GOAL_OPTIONS := [3000, 5000, 10000]  # 金額チャレンジの目標
 const BEST_PATH := "user://best.cfg"  # ベスト記録（Web ではブラウザの中に保存される）
+# 効果音のセット。kenney = 無料素材（CC0、sfx/kenney）、code = コードで作った音（tools/make_sfx.py）
+const SFX_SETS := ["kenney", "code", "off"]
+const SFX_NAMES := {"kenney": "音: 素材", "code": "音: コード", "off": "音: なし"}
 const START_MONEY := 100
 const FERT_PRICE := 15
 const WITHER_WATERED := 0.05  # 水をあげた夜に枯れる確率
@@ -45,6 +48,10 @@ var selected_seed := "turnip"
 # タップの予約。{"at": 畑の番号 か BOX, "use": タップした時にえらんでいた種か肥料}。
 # 先頭から順に歩いていって作業する
 var queue: Array = []
+var sfx_set := "kenney"
+var _sfx_cache := {}
+var _sfx_players: Array = []
+var _sfx_next := 0
 var busy := false  # 寝ている途中など、操作を受け付けない
 
 @onready var field: Node2D = $Field
@@ -55,6 +62,7 @@ var money_label: Label
 var bag_label: Label
 var message_label: Label
 var seed_buttons := {}
+var sfx_button: Button
 var sleep_button: Button
 var fade: ColorRect
 var popup: PanelContainer
@@ -73,6 +81,10 @@ func _ready() -> void:
 	player.arrived.connect(_on_arrived)
 	player.canceled.connect(_clear_queue)
 	_build_ui()
+	var cfg := ConfigFile.new()
+	if cfg.load(best_path) == OK:
+		sfx_set = cfg.get_value("settings", "sfx", sfx_set)
+	sfx_button.text = SFX_NAMES[sfx_set]
 	busy = true
 	if next_mode != "":
 		_start(next_mode, next_limit)
@@ -109,6 +121,35 @@ func _start(m: String, n: int) -> void:
 	say("畑をタップすると歩いていって耕すよ。続けてタップすると順番にやるよ")
 	await _fade_to(0.0)
 	busy = false
+
+
+# ---------------------------------------------------------------- 効果音
+
+func sfx(name: String) -> void:
+	if sfx_set == "off":
+		return
+	var path := "res://sfx/%s/%s.%s" % [sfx_set, name, "ogg" if sfx_set == "kenney" else "wav"]
+	if not _sfx_cache.has(path):
+		_sfx_cache[path] = load(path)
+	if _sfx_players.is_empty():
+		for k in 4:  # 4つまで重ねて鳴らせる
+			var pl := AudioStreamPlayer.new()
+			add_child(pl)
+			_sfx_players.append(pl)
+	var player_: AudioStreamPlayer = _sfx_players[_sfx_next]
+	_sfx_next = (_sfx_next + 1) % _sfx_players.size()
+	player_.stream = _sfx_cache[path]
+	player_.play()
+
+
+func _on_sfx_pressed() -> void:
+	sfx_set = SFX_SETS[(SFX_SETS.find(sfx_set) + 1) % SFX_SETS.size()]
+	sfx_button.text = SFX_NAMES[sfx_set]
+	var cfg := ConfigFile.new()
+	cfg.load(best_path)
+	cfg.set_value("settings", "sfx", sfx_set)
+	cfg.save(best_path)
+	sfx("harvest")
 
 
 # ---------------------------------------------------------------- 操作
@@ -187,20 +228,27 @@ func _work(i: int, use := "") -> void:
 	if use == "":
 		use = selected_seed
 	var p: Dictionary = field.plots[i]
+	var at: Vector2 = field.plot_center(i)
 	if not p.tilled:
 		p.tilled = true
+		sfx("till")
+		field.add_effect("dust", at)
 		say("耕したよ！下で種をえらんで、もう一回タップしてまこう")
 	elif p.dead:
 		p.crop = ""
 		p.dead = false
 		p.fert = false
+		sfx("clear")
+		field.add_effect("dust", at)
 		say("枯れた作物を片付けたよ")
 	elif p.crop == "":
 		if use == "fert":
+			sfx("error")
 			say("肥料は育っている作物に使うよ。種をえらんでまこう")
 			return
 		var c: Dictionary = CROPS[use]
 		if money < c.seed:
+			sfx("error")
 			say("お金が足りないよ（%sの種は %dG）" % [c.name, c.seed])
 			return
 		money -= c.seed
@@ -208,28 +256,36 @@ func _work(i: int, use := "") -> void:
 		p.growth = 0
 		p.watered = false
 		p.missed = false
+		sfx("sow")
+		field.add_effect("text", at, {"text": "-%dG" % c.seed, "color": Color(1, 0.85, 0.5)})
 		say("%sの種をまいたよ。水をあげてね" % c.name)
 	else:
 		var c: Dictionary = CROPS[p.crop]
 		var need: int = field.days_needed(p)
 		if p.growth >= need:
-			_harvest(p)
+			_harvest(i)
 		elif use == "fert" and not p.fert:
 			if money < FERT_PRICE:
+				sfx("error")
 				say("お金が足りないよ（肥料は %dG）" % FERT_PRICE)
 				return
 			money -= FERT_PRICE
 			p.fert = true
+			sfx("fert")
+			field.add_effect("text", at, {"text": "-%dG" % FERT_PRICE, "color": Color(1, 0.85, 0.5)})
 			say("肥料をあげたよ。もう枯れないし、1日早く育つよ")
 		elif not p.watered:
 			p.watered = true
+			sfx("water")
+			field.add_effect("splash", at)
 			say("水をあげたよ。あと%d日で収穫" % (need - p.growth))
 		else:
 			say("今日はもう水やりしたよ。寝ると育つよ")
 	_refresh()
 
 
-func _harvest(p: Dictionary) -> void:
+func _harvest(i: int) -> void:
+	var p: Dictionary = field.plots[i]
 	var cared: bool = not p.missed
 	var good := randf() < (GOOD_CARED if cared else GOOD_BASE)
 	var count := 2 if randf() < (DOUBLE_CARED if cared else DOUBLE_BASE) else 1
@@ -243,6 +299,11 @@ func _harvest(p: Dictionary) -> void:
 	elif count == 2:
 		text = "%sが2個とれた！" % CROPS[p.crop].name
 	say(text + "出荷箱に持っていこう")
+	var at: Vector2 = field.plot_center(i)
+	sfx("good" if good or count == 2 else "harvest")
+	field.add_effect("pop", at, {"crop": p.crop})
+	var label: String = ("★" if good else "") + CROPS[p.crop].name + ("×2" if count == 2 else "")
+	field.add_effect("text", at + Vector2(0, -60), {"text": label, "color": Color(1, 0.95, 0.4) if good else Color.WHITE})
 	p.crop = ""
 	p.growth = 0
 	p.watered = false
@@ -251,8 +312,14 @@ func _harvest(p: Dictionary) -> void:
 
 func _ship() -> void:
 	if bag.is_empty():
+		sfx("error")
 		say("かばんが空っぽだよ。育った作物を収穫してね")
 		return
+	sfx("ship")
+	var n := 0
+	for key in bag:
+		n += bag[key]
+	field.add_effect("text", field.BOX_RECT.get_center() + Vector2(0, -60), {"text": "%d個 出荷！" % n, "color": Color(1, 0.95, 0.4)})
 	for key in bag:
 		shipped[key] = shipped.get(key, 0) + bag[key]
 	bag.clear()
@@ -354,6 +421,7 @@ func _wake_up() -> void:
 	popup.visible = false
 	await _fade_to(0.0)
 	busy = false
+	sfx("morning")
 	if mode == "days" and day == limit:
 		say("今日が最終日！収穫したものは出荷箱へ")
 	else:
@@ -452,7 +520,14 @@ func _build_ui() -> void:
 	day_label = _label(top, Rect2(24, 12, 340, 60), 40, Color(0.35, 0.25, 0.15))
 	money_label = _label(top, Rect2(360, 12, 336, 60), 40, Color(0.75, 0.5, 0.05))
 	money_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	bag_label = _label(top, Rect2(24, 74, 672, 44), 26, Color(0.4, 0.32, 0.22))
+	bag_label = _label(top, Rect2(24, 74, 520, 44), 26, Color(0.4, 0.32, 0.22))
+	bag_label.clip_text = true
+	sfx_button = Button.new()
+	sfx_button.position = Vector2(556, 76)
+	sfx_button.size = Vector2(140, 44)
+	sfx_button.add_theme_font_size_override("font_size", 20)
+	sfx_button.pressed.connect(_on_sfx_pressed)
+	top.add_child(sfx_button)
 
 	var bottom := _rect(hud, Rect2(0, 990, 720, 290), Color(0.98, 0.94, 0.84))
 	message_label = _label(bottom, Rect2(24, 8, 672, 64), 26, Color(0.35, 0.25, 0.15))
@@ -481,6 +556,7 @@ func _build_ui() -> void:
 		b.toggled.connect(func(on: bool) -> void:
 			if on:
 				selected_seed = id
+				sfx("click")
 				say(hint))
 		bottom.add_child(b)
 		seed_buttons[id] = b

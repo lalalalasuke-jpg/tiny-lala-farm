@@ -45,3 +45,8 @@ tools\new_game.ps1 -Name MYGAME
 - **UI 文字列は ASCII のみ**（標準フォントに日本語グリフが無く Web で豆腐になる）。日本語を出すなら日本語フォントを同梱してテーマに設定。
 - 書き出しは **標準版 Godot**（mono 版は Web 不可）。エディタは mono でもよいが、開くと `project.godot` に `[dotnet]` が足されるので標準版で書き出す前に消す。
 - `index.wasm` が大きい（約38MB）。Cloudflare Pages（25MB/file 制限）は不可、GitHub Pages（100MB/file）を使う。
+
+## 素材
+
+- 効果音（`sfx/kenney/`）: [Kenney](https://www.kenney.nl) の RPG Audio・Interface Sounds（CC0）。ライセンス文は同じフォルダに同梱
+- 効果音（`sfx/code/`）: `tools/make_sfx.py` でコードから作った音
