@@ -73,19 +73,82 @@ func near_box(pos: Vector2) -> bool:
 
 
 func _draw() -> void:
-	# 草地
-	draw_rect(WALK_AREA, Color(0.45, 0.68, 0.36))
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 7
-	for k in 80:
-		var p := Vector2(rng.randf_range(40, 680), rng.randf_range(140, 980))
-		draw_line(p, p + Vector2(4, -10), Color(0.36, 0.58, 0.3), 3)
+	_draw_ground()
 	for i in plots.size():
 		_draw_plot(i)
 	_draw_box()
 	_draw_queue()
 	for e in effects:
 		_draw_effect(e)
+
+
+# 草地: うすい模様・草のふさ・小さな花・奥の柵。乱数の種を固定して毎回同じ配置にする
+func _draw_ground() -> void:
+	draw_rect(WALK_AREA, Color(0.47, 0.7, 0.38))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	for k in 14:  # 明るいところ
+		var at := Vector2(rng.randf_range(60, 660), rng.randf_range(220, 960))
+		_ellipse(at, rng.randf_range(40, 90), 0.45, Color(0.53, 0.75, 0.42, 0.6))
+	var farm := Rect2(ORIGIN, Vector2(COLS, ROWS) * (PLOT + GAP)).grow(16)
+	for k in 70:  # 草のふさ
+		var at := Vector2(rng.randf_range(45, 675), rng.randf_range(225, 975))
+		if farm.has_point(at):
+			continue
+		var g := Color(0.36, 0.58, 0.3)
+		draw_line(at, at + Vector2(-5, -10), g, 3)
+		draw_line(at, at + Vector2(1, -13), g, 3)
+		draw_line(at, at + Vector2(6, -9), g, 3)
+	var petals := [Color(1, 1, 1), Color(1, 0.85, 0.35), Color(1, 0.65, 0.75)]
+	for k in 22:  # 小さな花
+		var at := Vector2(rng.randf_range(50, 670), rng.randf_range(230, 970))
+		if farm.has_point(at) or BOX_RECT.grow(30).has_point(at):
+			continue
+		var col: Color = petals[k % petals.size()]
+		for a in 5:
+			draw_circle(at + Vector2(6, 0).rotated(a * TAU / 5), 4.5, col)
+		draw_circle(at, 3.5, Color(1, 0.75, 0.2) if col != petals[1] else Color(0.9, 0.5, 0.15))
+	# 奥の木の柵
+	var wood := Color(0.82, 0.62, 0.4)
+	var dark := wood.darkened(0.35)
+	for y in [172.0, 196.0]:
+		draw_rect(Rect2(36, y - 5, 648, 10), dark)
+		draw_rect(Rect2(36, y - 3, 648, 6), wood)
+	for x in range(50, 690, 64):
+		_round_rect(Rect2(x - 9, 150, 18, 62), wood, 6, dark, 3)
+
+
+func _ellipse(at: Vector2, r: float, squash: float, color: Color) -> void:
+	draw_set_transform(at, 0, Vector2(1, squash))
+	draw_circle(Vector2.ZERO, r, color)
+	draw_set_transform(Vector2.ZERO)
+
+
+# 影（地面に落ちる平たい楕円）
+func _shadow(at: Vector2, r: float, alpha := 1.0) -> void:
+	_ellipse(at, r, 0.32, Color(0, 0, 0, 0.16 * alpha))
+
+
+func _round_rect(r: Rect2, color: Color, radius: int, border := Color.TRANSPARENT, width := 0) -> void:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = color
+	sb.set_corner_radius_all(radius)
+	if width > 0:
+		sb.border_color = border
+		sb.set_border_width_all(width)
+	draw_style_box(sb, r)
+
+
+# ふちどりつきの丸をまとめて描く。先に全部のふちを描いてから中身を塗るので、重なってもつながって見える
+# items: [[位置, 半径, 色], ...]
+func _blobs(items: Array, alpha := 1.0) -> void:
+	var line := Color(0.3, 0.2, 0.12, 0.6 * alpha)
+	for it in items:
+		draw_circle(it[0], it[1] + 3, line)
+	for it in items:
+		var col: Color = it[2]
+		col.a = alpha
+		draw_circle(it[0], it[1], col)
 
 
 func _draw_effect(e: Dictionary) -> void:
@@ -137,15 +200,17 @@ func _draw_plot(i: int) -> void:
 	var rect := plot_rect(i)
 	var p: Dictionary = plots[i]
 	if not p.tilled:
-		draw_rect(rect, Color(0.4, 0.6, 0.32))
-		draw_rect(rect, Color(0.33, 0.5, 0.27), false, 4)
+		_round_rect(rect, Color(0.42, 0.63, 0.34), 16, Color(0.36, 0.55, 0.29), 3)
+		draw_string(FONT, rect.position + Vector2(0, PLOT / 2 + 10), "タップで耕す", HORIZONTAL_ALIGNMENT_CENTER, PLOT, 18, Color(1, 1, 1, 0.35))
 		return
-	var soil := Color(0.45, 0.3, 0.18) if p.watered else Color(0.66, 0.48, 0.3)
-	draw_rect(rect, soil)
-	# うね（畝）の線
+	var soil := Color(0.45, 0.3, 0.18) if p.watered else Color(0.68, 0.5, 0.32)
+	_round_rect(Rect2(rect.position + Vector2(0, 6), rect.size), Color(0, 0, 0, 0.15), 16)  # 影
+	_round_rect(rect, soil, 16, soil.darkened(0.25), 3)
+	# うね（畝）: 暗い線の下に明るい線で、もこっとして見える
 	for k in 3:
-		var y := rect.position.y + 30 + k * 40
-		draw_line(Vector2(rect.position.x + 12, y), Vector2(rect.end.x - 12, y), soil.darkened(0.2), 4)
+		var y := rect.position.y + 32 + k * 40
+		draw_line(Vector2(rect.position.x + 16, y), Vector2(rect.end.x - 16, y), soil.darkened(0.22), 5)
+		draw_line(Vector2(rect.position.x + 16, y + 5), Vector2(rect.end.x - 16, y + 5), soil.lightened(0.1), 2)
 	if p.crop == "":
 		return
 	var crop: Dictionary = crops[p.crop]
@@ -172,9 +237,8 @@ func _draw_plot(i: int) -> void:
 			leaf = Color(0.62, 0.7, 0.3)
 			top = c + Vector2(4 * t, 20 - 22 * t)
 			droop = Vector2(0, 12 * t)
-		draw_line(c + Vector2(0, 20), top, leaf.darkened(0.2), 4)
-		draw_circle(top + Vector2(-12 * t, 0) + droop, 12 * t, leaf)
-		draw_circle(top + Vector2(12 * t, 0) + droop, 12 * t, leaf)
+		draw_line(c + Vector2(0, 20), top, leaf.darkened(0.3), 4)
+		_blobs([[top + Vector2(-12 * t, 0) + droop, 12 * t, leaf], [top + Vector2(12 * t, 0) + droop, 12 * t, leaf]])
 		# のこり日数
 		var left := "あと%d日" % (need - p.growth)
 		draw_string(FONT, rect.position + Vector2(0, PLOT - 10), left, HORIZONTAL_ALIGNMENT_CENTER, PLOT, 22, Color(1, 1, 1, 0.9))
@@ -196,28 +260,38 @@ func _draw_plot(i: int) -> void:
 
 # alpha: 透明度（収穫の演出で薄くしながら消すとき）
 func _draw_ripe(id: String, color: Color, c: Vector2, alpha := 1.0) -> void:
-	var leaf := Color(0.25, 0.65, 0.25, alpha)
+	var leaf := Color(0.3, 0.68, 0.3)
+	var shine := Color(1, 1, 1, 0.55 * alpha)  # ツヤ
+	if alpha >= 1.0:
+		_shadow(c + Vector2(0, 38), 36)
 	match id:
 		"turnip":
-			draw_circle(c + Vector2(-14, -34), 14, leaf)
-			draw_circle(c + Vector2(14, -34), 14, leaf)
-			draw_circle(c + Vector2(0, 0), 34, color)
-			draw_circle(c + Vector2(0, -20), 20, Color(0.7, 0.35, 0.75, alpha))
+			_blobs([[c + Vector2(-14, -36), 13, leaf], [c + Vector2(14, -36), 13, leaf], [c + Vector2(0, -44), 11, leaf]], alpha)
+			draw_line(c + Vector2(0, 30), c + Vector2(2, 44), Color(0.85, 0.8, 0.85, alpha), 3)  # ひげ根
+			_blobs([[c, 34, color]], alpha)
+			_blobs([[c + Vector2(0, -20), 20, Color(0.72, 0.38, 0.78)]], alpha)
+			draw_circle(c + Vector2(-13, 6), 7, shine)
 		"tomato":
-			draw_line(c + Vector2(0, 40), c + Vector2(0, -45), leaf.darkened(0.2), 5)
-			for o in [Vector2(-22, -18), Vector2(20, -4), Vector2(-14, 24)]:
-				draw_circle(c + o, 20, color)
-				draw_circle(c + o + Vector2(-6, -6), 5, Color(1, 1, 1, 0.5 * alpha))
+			draw_line(c + Vector2(0, 42), c + Vector2(0, -46), leaf.darkened(0.3), 5)
+			var fruits := [c + Vector2(-22, -18), c + Vector2(20, -4), c + Vector2(-14, 24)]
+			_blobs(fruits.map(func(o): return [o, 20, color]), alpha)
+			for o in fruits:
+				draw_circle(o + Vector2(0, -18), 5, Color(leaf, alpha))  # へた
+				draw_circle(o + Vector2(-7, -5), 5, shine)
 		"strawberry":
-			draw_circle(c + Vector2(0, -30), 16, leaf)
-			draw_colored_polygon(PackedVector2Array([c + Vector2(-34, -16), c + Vector2(34, -16), c + Vector2(0, 40)]), color)
-			draw_circle(c + Vector2(-17, -12), 18, color)
-			draw_circle(c + Vector2(17, -12), 18, color)
-			for o in [Vector2(-12, -6), Vector2(10, -2), Vector2(0, 14), Vector2(-4, -16), Vector2(16, -16)]:
+			_blobs([[c + Vector2(-10, -32), 11, leaf], [c + Vector2(10, -32), 11, leaf]], alpha)
+			var body := PackedVector2Array([c + Vector2(-35, -14), c + Vector2(35, -14), c + Vector2(0, 42)])
+			var outline := Color(0.3, 0.2, 0.12, 0.6 * alpha)
+			draw_polyline(body + PackedVector2Array([body[0]]), outline, 6)
+			_blobs([[c + Vector2(-17, -12), 18, color], [c + Vector2(17, -12), 18, color]], alpha)
+			draw_colored_polygon(body, Color(color, alpha))
+			for o in [Vector2(-12, -6), Vector2(10, -2), Vector2(0, 14), Vector2(-4, -16), Vector2(16, -16), Vector2(-18, -18)]:
 				draw_circle(c + o, 2.5, Color(1, 0.9, 0.4, alpha))
+			draw_circle(c + Vector2(-20, -16), 5, shine)
 	# 収穫できる合図のキラキラ
 	if alpha < 1.0:
 		return
+	draw_string_outline(FONT, c + Vector2(30, -40), "★", HORIZONTAL_ALIGNMENT_LEFT, -1, 28, 6, Color(0.6, 0.4, 0.1, 0.6))
 	draw_string(FONT, c + Vector2(30, -40), "★", HORIZONTAL_ALIGNMENT_LEFT, -1, 28, Color(1, 0.95, 0.4))
 
 
@@ -229,10 +303,16 @@ func _draw_drop(at: Vector2) -> void:
 
 func _draw_box() -> void:
 	var r := BOX_RECT
-	draw_rect(r, Color(0.6, 0.4, 0.22))
-	draw_rect(r, Color(0.4, 0.25, 0.12), false, 5)
-	draw_line(r.position + Vector2(0, 30), Vector2(r.end.x, r.position.y + 30), Color(0.4, 0.25, 0.12), 4)
+	var wood := Color(0.72, 0.5, 0.3)
+	var dark := Color(0.42, 0.26, 0.13)
+	_shadow(r.get_center() + Vector2(0, r.size.y / 2 + 4), 70)
+	_round_rect(r, wood, 10, dark, 4)
+	for x in [r.position.x + 40, r.position.x + 80]:  # 板のすき間
+		draw_line(Vector2(x, r.position.y + 32), Vector2(x, r.end.y - 6), wood.darkened(0.2), 2)
+	_round_rect(Rect2(r.position, Vector2(r.size.x, 30)), wood.lightened(0.12), 10, dark, 4)  # ふた
+	draw_string_outline(FONT, r.position + Vector2(0, 72), "出荷箱", HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 26, 6, dark)
 	draw_string(FONT, r.position + Vector2(0, 72), "出荷箱", HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 26, Color(1, 0.97, 0.9))
 	if shipped_count > 0:
-		draw_circle(r.position + Vector2(r.size.x, 0), 20, Color(0.9, 0.3, 0.3))
+		draw_circle(r.position + Vector2(r.size.x, 0), 22, Color(1, 1, 1))
+		draw_circle(r.position + Vector2(r.size.x, 0), 19, Color(0.9, 0.3, 0.3))
 		draw_string(FONT, r.position + Vector2(r.size.x - 20, 9), str(shipped_count), HORIZONTAL_ALIGNMENT_CENTER, 40, 24, Color.WHITE)

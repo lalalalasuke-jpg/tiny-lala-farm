@@ -516,7 +516,10 @@ func _build_ui() -> void:
 	var hud := CanvasLayer.new()
 	add_child(hud)
 
+	var theme := _make_theme()
 	var top := _rect(hud, Rect2(0, 0, 720, 130), Color(0.98, 0.94, 0.84))
+	top.theme = theme
+	_rect(top, Rect2(0, 126, 720, 4), Color(0.86, 0.74, 0.54))
 	day_label = _label(top, Rect2(24, 12, 340, 60), 40, Color(0.35, 0.25, 0.15))
 	money_label = _label(top, Rect2(360, 12, 336, 60), 40, Color(0.75, 0.5, 0.05))
 	money_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -530,6 +533,8 @@ func _build_ui() -> void:
 	top.add_child(sfx_button)
 
 	var bottom := _rect(hud, Rect2(0, 990, 720, 290), Color(0.98, 0.94, 0.84))
+	bottom.theme = theme
+	_rect(bottom, Rect2(0, 0, 720, 4), Color(0.86, 0.74, 0.54))
 	message_label = _label(bottom, Rect2(24, 8, 672, 64), 26, Color(0.35, 0.25, 0.15))
 	message_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	message_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -567,6 +572,14 @@ func _build_ui() -> void:
 	sleep_button.size = Vector2(672, 72)
 	sleep_button.add_theme_font_size_override("font_size", 30)
 	sleep_button.pressed.connect(_on_sleep_pressed)
+	# 寝るボタンだけ夜の色
+	for st in ["normal", "hover", "pressed"]:
+		var sb: StyleBoxFlat = theme.get_stylebox(st, "Button").duplicate()
+		sb.bg_color = Color(0.36, 0.4, 0.68) if st != "pressed" else Color(0.28, 0.32, 0.56)
+		sb.border_color = Color(0.22, 0.25, 0.45)
+		sleep_button.add_theme_stylebox_override(st, sb)
+	for st in ["font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color", "font_focus_color"]:
+		sleep_button.add_theme_color_override(st, Color(1, 0.97, 0.88))
 	bottom.add_child(sleep_button)
 
 	fade = _rect(hud, Rect2(0, 0, 720, 1280), Color(0.05, 0.05, 0.15, 0.0))
@@ -575,6 +588,7 @@ func _build_ui() -> void:
 	popup.position = Vector2(110, 360)
 	popup.custom_minimum_size = Vector2(500, 0)
 	popup.visible = false
+	popup.theme = theme
 	hud.add_child(popup)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 24)
@@ -586,6 +600,43 @@ func _build_ui() -> void:
 	popup_buttons = VBoxContainer.new()
 	popup_buttons.add_theme_constant_override("separation", 16)
 	box.add_child(popup_buttons)
+
+
+# ボタンとポップアップの見た目（角まるの、クリーム色に茶色のふち）
+func _make_theme() -> Theme:
+	var th := Theme.new()
+	var brown := Color(0.35, 0.25, 0.15)
+	var styles := {
+		"normal": [Color(1, 0.99, 0.95), Color(0.76, 0.6, 0.42), 3],
+		"hover": [Color(1, 0.97, 0.88), Color(0.76, 0.6, 0.42), 3],
+		"pressed": [Color(1, 0.9, 0.58), Color(0.86, 0.55, 0.15), 5],
+		"disabled": [Color(0.92, 0.9, 0.86), Color(0.8, 0.76, 0.7), 3],
+	}
+	for st in styles:
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = styles[st][0]
+		sb.border_color = styles[st][1]
+		sb.set_border_width_all(styles[st][2])
+		sb.set_corner_radius_all(14)
+		sb.shadow_color = Color(0, 0, 0, 0.12)
+		sb.shadow_size = 2
+		sb.shadow_offset = Vector2(0, 3)
+		th.set_stylebox(st, "Button", sb)
+	th.set_stylebox("hover_pressed", "Button", th.get_stylebox("pressed", "Button"))
+	th.set_stylebox("focus", "Button", StyleBoxEmpty.new())
+	for st in ["font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color", "font_focus_color"]:
+		th.set_color(st, "Button", brown)
+	var panel := StyleBoxFlat.new()
+	panel.bg_color = Color(1, 0.98, 0.92)
+	panel.border_color = Color(0.6, 0.45, 0.28)
+	panel.set_border_width_all(4)
+	panel.set_corner_radius_all(22)
+	panel.set_content_margin_all(28)
+	panel.shadow_color = Color(0, 0, 0, 0.25)
+	panel.shadow_size = 10
+	th.set_stylebox("panel", "PanelContainer", panel)
+	th.set_color("font_color", "Label", brown)
+	return th
 
 
 # buttons: [["ボタンの文字", 押したときの Callable], ...]
