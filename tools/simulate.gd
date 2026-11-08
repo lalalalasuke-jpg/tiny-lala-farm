@@ -6,7 +6,7 @@ extends SceneTree
 const MAIN := preload("res://scenes/main.gd")
 const RUNS := 300
 const DAYS := 30  # 日数チャレンジの長さ
-const GOAL := 3000  # 金額チャレンジの目標
+const GOALS := [3000, 5000, 10000]  # 金額チャレンジの目標
 
 # 作戦: 9マスそれぞれに何をまくか、どの作物に肥料を使うか
 const PLANS := {
@@ -16,22 +16,35 @@ const PLANS := {
 	"セット狙い(2:3:4)": {"plots": ["turnip", "turnip", "tomato", "tomato", "tomato", "strawberry", "strawberry", "strawberry", "strawberry"], "fert": []},
 	"セット狙い＋イチゴに肥料": {"plots": ["turnip", "turnip", "tomato", "tomato", "tomato", "strawberry", "strawberry", "strawberry", "strawberry"], "fert": ["strawberry"]},
 	"セット狙い＋全部に肥料": {"plots": ["turnip", "turnip", "tomato", "tomato", "tomato", "strawberry", "strawberry", "strawberry", "strawberry"], "fert": ["turnip", "tomato", "strawberry"]},
+	# 買い足し: お金が「値段＋buy」以上あれば、朝に売り地を1マス買う。増えた畑には EXTRA の順にまく
+	"セット狙い＋全部に肥料＋買い足し": {"plots": ["turnip", "turnip", "tomato", "tomato", "tomato", "strawberry", "strawberry", "strawberry", "strawberry"], "fert": ["turnip", "tomato", "strawberry"], "buy": 200},
+	"同＋買い足し(10日目まで)": {"plots": ["turnip", "turnip", "tomato", "tomato", "tomato", "strawberry", "strawberry", "strawberry", "strawberry"], "fert": ["turnip", "tomato", "strawberry"], "buy": 200, "until": 10},
+	"同＋買い足し(20日目まで)": {"plots": ["turnip", "turnip", "tomato", "tomato", "tomato", "strawberry", "strawberry", "strawberry", "strawberry"], "fert": ["turnip", "tomato", "strawberry"], "buy": 200, "until": 20},
 }
+const EXTRA := ["strawberry", "tomato", "turnip", "strawberry", "tomato", "strawberry", "turnip"]
+const MAX_PLOTS := 16
 
 
 func _initialize() -> void:
+	print("売り地: %dG から買うたびに +%dG" % [MAIN.BUY_BASE, MAIN.BUY_STEP])
 	for name in PLANS:
 		var total_money := 0.0
-		var total_days := 0.0
+		var total_days := [0.0, 0.0, 0.0]
 		for r in RUNS:
 			var res := _play(PLANS[name])
 			total_money += res[0]
-			total_days += res[1]
-		print("%s: 30日で 平均%dG / 3000Gまで 平均%.1f日" % [name, total_money / RUNS, total_days / RUNS])
+			for g in GOALS.size():
+				total_days[g] += res[1][g]
+		var goal_text := " / ".join(range(GOALS.size()).map(func(g): return "%dG %.1f日" % [GOALS[g], total_days[g] / RUNS]))
+		print("%s: 30日で 平均%dG（畑%.1fマス）/ %s" % [name, total_money / RUNS, _plots_sum / RUNS, goal_text])
+		_plots_sum = 0.0
 	quit()
 
 
 # 毎日: 収穫 → 出荷 → 空いた畑にまく（お金が足りなければ待つ）→ 肥料 → 水 → 寝る
+var _plots_sum := 0.0
+
+
 func _play(plan: Dictionary) -> Array:
 	var crops: Dictionary = MAIN.CROPS
 	var money: int = MAIN.START_MONEY
@@ -39,7 +52,7 @@ func _play(plan: Dictionary) -> Array:
 	for i in 9:
 		plots.append({"crop": "", "growth": 0, "fert": false, "dead": false})
 	var money_at_30 := 0
-	var goal_day := 0
+	var goal_days := [0, 0, 0]
 	for day in range(1, 300):
 		var earned := 0
 		var counts := {}
@@ -57,9 +70,13 @@ func _play(plan: Dictionary) -> Array:
 		for id in MAIN.SEED_ORDER:
 			sets = min(sets, counts.get(id, 0))
 		earned += sets * MAIN.SET_BONUS
-		for i in 9:
+		var price: int = MAIN.BUY_BASE + MAIN.BUY_STEP * (plots.size() - 9)
+		if plan.has("buy") and day <= plan.get("until", 999) and plots.size() < MAX_PLOTS and money >= price + plan.buy:
+			money -= price
+			plots.append({"crop": "", "growth": 0, "fert": false, "dead": false})
+		for i in plots.size():
 			var p: Dictionary = plots[i]
-			var id: String = plan.plots[i]
+			var id: String = plan.plots[i] if i < 9 else EXTRA[i - 9]
 			if p.crop == "" and money >= crops[id].seed:
 				money -= crops[id].seed
 				p.crop = id
@@ -77,11 +94,13 @@ func _play(plan: Dictionary) -> Array:
 		money += earned
 		if day == DAYS:
 			money_at_30 = money
-		if goal_day == 0 and money >= GOAL:
-			goal_day = day
-		if day >= DAYS and goal_day > 0:
+			_plots_sum += plots.size()
+		for g in GOALS.size():
+			if goal_days[g] == 0 and money >= GOALS[g]:
+				goal_days[g] = day
+		if day >= DAYS and goal_days[-1] > 0:
 			break
-	return [money_at_30, goal_day]
+	return [money_at_30, goal_days]
 
 
 func _need(p: Dictionary) -> int:

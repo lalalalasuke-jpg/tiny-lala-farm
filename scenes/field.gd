@@ -2,11 +2,11 @@ extends Node2D
 
 # 畑 3×3 と出荷箱の見た目。状態（plots）は main.gd が持っていて、ここは描くだけ。
 
-const COLS := 3
-const ROWS := 3
-const PLOT := 140.0
+const COLS := 4
+const ROWS := 4
+const PLOT := 130.0
 const GAP := 10.0
-const ORIGIN := Vector2(140, 330)  # 左上の畑の左上の角
+const ORIGIN := Vector2(85, 250)  # 左上の畑の左上の角
 const WALK_AREA := Rect2(30, 130, 660, 860)  # キャラが歩ける範囲
 const BOX_RECT := Rect2(540, 830, 120, 90)
 const BOX := 99  # main.gd の BOX と同じ（予約の行き先が出荷箱）
@@ -16,6 +16,7 @@ const FONT := preload("res://fonts/NotoSansJP-Subset.ttf")
 var plots: Array = []  # main.gd から渡される（Dictionary の配列）
 var crops: Dictionary = {}
 var shipped_count := 0
+var buy_price := 0  # 売り地の今の値段
 var queued: Array = []  # タップの予約の行き先（畑の番号か BOX）を順番に
 # 一瞬だけ出る演出（土ぼこり・水しぶき・収穫でぴょこっと・文字）。t は 0→1 で進んで消える
 var effects: Array = []
@@ -199,6 +200,9 @@ func _draw_queue() -> void:
 func _draw_plot(i: int) -> void:
 	var rect := plot_rect(i)
 	var p: Dictionary = plots[i]
+	if not p.owned:
+		_draw_for_sale(rect)
+		return
 	if not p.tilled:
 		_round_rect(rect, Color(0.42, 0.63, 0.34), 16, Color(0.36, 0.55, 0.29), 3)
 		draw_string(FONT, rect.position + Vector2(0, PLOT / 2 + 10), "タップで耕す", HORIZONTAL_ALIGNMENT_CENTER, PLOT, 18, Color(1, 1, 1, 0.35))
@@ -259,6 +263,22 @@ func _draw_plot(i: int) -> void:
 
 
 # alpha: 透明度（収穫の演出で薄くしながら消すとき）
+# 売り地: うすい点線のわくと、値段の立て札
+func _draw_for_sale(rect: Rect2) -> void:
+	var line := Color(1, 1, 1, 0.45)
+	var r := rect.grow(-6)
+	var corners := [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]
+	for k in 4:
+		draw_dashed_line(corners[k], corners[(k + 1) % 4], line, 3, 10)
+	var c := rect.get_center()
+	var wood := Color(0.86, 0.68, 0.45)
+	var dark := wood.darkened(0.4)
+	draw_line(c + Vector2(0, 8), c + Vector2(0, 44), dark, 6)  # 立て札の足
+	_round_rect(Rect2(c + Vector2(-50, -36), Vector2(100, 50)), wood, 8, dark, 3)
+	draw_string(FONT, c + Vector2(-50, -14), "売り地", HORIZONTAL_ALIGNMENT_CENTER, 100, 18, dark)
+	draw_string(FONT, c + Vector2(-50, 8), "%dG" % buy_price, HORIZONTAL_ALIGNMENT_CENTER, 100, 20, Color(0.55, 0.3, 0.05))
+
+
 func _draw_ripe(id: String, color: Color, c: Vector2, alpha := 1.0) -> void:
 	var leaf := Color(0.3, 0.68, 0.3)
 	var shine := Color(1, 1, 1, 0.55 * alpha)  # ツヤ

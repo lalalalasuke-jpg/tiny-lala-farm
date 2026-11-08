@@ -15,7 +15,7 @@ func _run() -> void:
 		main.best_path = "user://test_best.cfg"
 		main._start("days", 30)
 		await create_timer(0.6).timeout
-		for i in [0, 0, 1, 1, 4]:  # 0と1は「耕す→まく」、4は耕すだけ
+		for i in [0, 0, 1, 1, 5]:  # 0と1は「耕す→まく」、5は耕すだけ
 			main._on_tap(main.field.plot_center(i))
 		main.selected_seed = "tomato"  # 予約したあとに種を変えても、予約はカブのまま
 		main._on_tap(main.field.BOX_RECT.get_center())
@@ -25,7 +25,7 @@ func _run() -> void:
 		root.get_texture().get_image().save_png(args[0])
 		await create_timer(4.0).timeout
 		var crops := []
-		for i in [0, 1, 4]:
+		for i in [0, 1, 5]:
 			crops.append([main.field.plots[i].tilled, main.field.plots[i].crop])
 		print("after=", crops, " queue=", main.queue.size(), " money=", main.money)
 		quit()
@@ -39,10 +39,12 @@ func _run() -> void:
 		await create_timer(0.6).timeout
 		# 1日目: 9マス耕して、カブ3・トマト2・イチゴ1をまいて水やり
 		var plan := ["turnip", "turnip", "turnip", "tomato", "tomato", "strawberry", "", "", ""]
-		for i in 9:
+		var own: Array = main.owned_plots()
+		for k in own.size():
+			var i: int = own[k]
 			main._work(i)
-			if plan[i] != "":
-				main.selected_seed = plan[i]
+			if plan[k] != "":
+				main.selected_seed = plan[k]
 				main._work(i)
 				main._work(i)
 		var days: int = 2 if mode == "grow" else 30
@@ -55,7 +57,7 @@ func _run() -> void:
 			await create_timer(0.5).timeout
 			if mode == "grow" and d == days - 1:
 				break
-			for i in 9:
+			for i in main.owned_plots():
 				main._work(i)  # 収穫できれば収穫、できなければ水やり
 				if main.field.plots[i].crop == "" and main.field.plots[i].tilled and main.money >= 10:
 					main.selected_seed = "turnip"
@@ -63,8 +65,8 @@ func _run() -> void:
 					main._work(i)
 			main._ship()
 		if mode == "grow":  # 枯れた畑と肥料の見た目も確認
-			main.field.plots[3].dead = true
-			main.field.plots[5].fert = true
+			main.field.plots[4].dead = true
+			main.field.plots[6].fert = true
 			main.field.queue_redraw()
 		main.player.position = Vector2(300, 800)
 	await create_timer(0.3).timeout

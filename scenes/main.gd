@@ -22,6 +22,11 @@ const DOUBLE_CARED := 0.25  # 2個とれる
 const DOUBLE_BASE := 0.05
 const GOOD_RATE := 1.5
 const SET_BONUS := 150  # 出荷箱にカブ・トマト・イチゴがそろうと「野菜セット」でボーナス
+# 畑の買い足し: 4×4 のうち、はじめは左上の 3×3 だけ自分の畑。残りは1マスずつ買える。
+# 値段は買うたびに上がる（BUY_BASE + BUY_STEP × 買った数）
+const START_SIZE := 3
+const BUY_BASE := 200
+const BUY_STEP := 100
 const CROPS := {
 	"turnip": {"name": "カブ", "seed": 10, "days": 2, "price": 30, "color": Color(0.97, 0.95, 0.97)},
 	"tomato": {"name": "トマト", "seed": 20, "days": 3, "price": 70, "color": Color(0.9, 0.2, 0.15)},
@@ -48,6 +53,8 @@ var selected_seed := "turnip"
 # タップの予約。{"at": 畑の番号 か BOX, "use": タップした時にえらんでいた種か肥料}。
 # 先頭から順に歩いていって作業する
 var queue: Array = []
+var bought := 0  # 買い足した畑の数
+var confirm_buy := -1  # 「もう一回タップで買う」を待っている畑
 var sfx_set := "code"
 var _sfx_cache := {}
 var _sfx_players: Array = []
@@ -72,8 +79,9 @@ var popup_buttons: VBoxContainer
 
 func _ready() -> void:
 	var plots := []
-	for i in 9:
-		plots.append({"tilled": false, "crop": "", "growth": 0, "watered": false, "fert": false, "dead": false, "missed": false})
+	for i in field.COLS * field.ROWS:
+		var owned: bool = i % field.COLS < START_SIZE and i / field.COLS < START_SIZE
+		plots.append({"owned": owned, "tilled": false, "crop": "", "growth": 0, "watered": false, "fert": false, "dead": false, "missed": false})
 	field.plots = plots
 	field.crops = CROPS
 	player.bounds = field.WALK_AREA.grow(-30)
@@ -229,6 +237,10 @@ func _work(i: int, use := "") -> void:
 		use = selected_seed
 	var p: Dictionary = field.plots[i]
 	var at: Vector2 = field.plot_center(i)
+	if not p.owned:
+		_buy(i)
+		return
+	confirm_buy = -1
 	if not p.tilled:
 		p.tilled = true
 		sfx("till")
@@ -281,6 +293,38 @@ func _work(i: int, use := "") -> void:
 			say("水をあげたよ。あと%d日で収穫" % (need - p.growth))
 		else:
 			say("今日はもう水やりしたよ。寝ると育つよ")
+	_refresh()
+
+
+func plot_price() -> int:
+	return BUY_BASE + BUY_STEP * bought
+
+
+# 自分の畑の番号（テストやシミュレーション用）
+func owned_plots() -> Array:
+	return range(field.plots.size()).filter(func(i): return field.plots[i].owned)
+
+
+# 売り地: 1回目のタップで値段を見せて、もう一回タップで買う（うっかり買わないように）
+func _buy(i: int) -> void:
+	var price := plot_price()
+	if confirm_buy != i:
+		confirm_buy = i
+		sfx("click")
+		say("この畑は %dGで買えるよ。もう一回タップで買う" % price)
+		return
+	confirm_buy = -1
+	if money < price:
+		sfx("error")
+		say("お金が足りないよ（この畑は %dG）" % price)
+		return
+	money -= price
+	field.plots[i].owned = true
+	bought += 1
+	sfx("good")
+	field.add_effect("dust", field.plot_center(i))
+	field.add_effect("text", field.plot_center(i), {"text": "-%dG" % price, "color": Color(1, 0.85, 0.5)})
+	say("畑が広くなったよ！耕して使おう" + ("" if owned_plots().size() < field.plots.size() else "（これで全部の畑が自分のもの！）"))
 	_refresh()
 
 
@@ -509,6 +553,7 @@ func _refresh() -> void:
 	for id in shipped:
 		n += shipped[id]
 	field.shipped_count = n
+	field.buy_price = plot_price()
 	field.queue_redraw()
 
 
