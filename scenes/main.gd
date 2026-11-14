@@ -59,7 +59,7 @@ const CREDITS := """クレジット
 フォント: Noto Sans JP（SIL Open Font License 1.1）
 効果音（素材）: Kenney（CC0）
 ゲームエンジン: Godot Engine（MIT License）
-© Juan Linietsky, Ariel Manzur and contributors
+(c) Juan Linietsky, Ariel Manzur and contributors
 godotengine.org/license"""
 const BOX := 99  # 予約の行き先: 出荷箱
 const QUEUE_MAX := 12
